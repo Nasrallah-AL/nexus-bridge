@@ -315,7 +315,7 @@ function createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManag
    *       Send a prompt to Claude CLI for asynchronous execution.
    *       The request is added to a task queue and processed in the background.
    *       Supports priority-based scheduling and webhook callbacks.
-   *     tags: [Async Messages]
+   *     tags: [Messages]
    *     requestBody:
    *       required: true
    *       content:
