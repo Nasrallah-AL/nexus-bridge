@@ -67,7 +67,7 @@ async function loadConfig() {
     console.error(chalk.red.bold('═════════════════════════════════════════'));
     console.error(chalk.red.bold('⚠️  检测到以 root 用户运行，但 root 兼容模式未启用'));
     console.error('');
-    console.error(chalk.yellow('Claude CLI 不允许在 root 权限下使用 --allow-dangerously-skip-permissions'));
+    console.error(chalk.yellow('Claude CLI 不允许在 root 权限下使用 --dangerously-skip-permissions'));
     console.error('');
     console.error(chalk.cyan('解决方案：'));
     console.error(chalk.white('  1. 在配置菜单中启用"root 兼容模式"'));

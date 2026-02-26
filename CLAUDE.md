@@ -160,7 +160,7 @@ The server handles SIGTERM/SIGINT:
 5. Removes PID file
 
 ### Claude CLI Execution
-- CLI is spawned with `--allow-dangerously-skip-permissions` flag
+- CLI is spawned with `--dangerously-skip-permissions` flag
 - Environment must include NVM bin in PATH for correct Node version
 - Project path is used as `cwd` for the spawned process
 - Timeout is 5 minutes (300000ms) by default

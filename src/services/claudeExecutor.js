@@ -164,7 +164,7 @@ class ClaudeExecutor {
       env.PATH = `${this.config.nvmBin}:${env.PATH}`;
 
       // 根据配置决定是否使用 IS_SANDBOX=1 环境变量
-      // 这是为了绕过 Claude CLI 在 root 用户下对 --allow-dangerously-skip-permissions 的限制
+      // 这是为了绕过 Claude CLI 在 root 用户下对 --dangerously-skip-permissions 的限制
       if (this.config.enableRootCompatibility !== false) {
         env.IS_SANDBOX = '1';
         const isRunningAsRoot = process.getuid() === 0;
@@ -283,7 +283,7 @@ class ClaudeExecutor {
     }
 
     // 跳过权限检查
-    args.push('--allow-dangerously-skip-permissions');
+    args.push('--dangerously-skip-permissions');
 
     return args;
   }
