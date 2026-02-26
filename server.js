@@ -209,6 +209,30 @@ async function main() {
   app.use('/api/statistics', createStatisticsRoutes(statisticsCollector));
   app.use('/api/tasks', createTaskRoutes(taskQueue));
 
+  // Swagger API Documentation
+  const swaggerUi = require('swagger-ui-express');
+  const swaggerSpec = require('./swagger-config');
+
+  // Serve Swagger UI
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: 'Claude Code Server API Documentation',
+    customCss: '.swagger-ui .topbar { display: none }',
+    swaggerOptions: {
+      persistAuthorization: true,
+      displayRequestDuration: true,
+      docExpansion: 'list',
+      filter: true,
+      showRequestHeaders: true,
+      tryItOutEnabled: true
+    }
+  }));
+
+  // Serve raw OpenAPI JSON spec
+  app.get('/api-docs.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+  });
+
   // 配置热重载
   let configWatcher = null;
   let reloadCount = 0;
