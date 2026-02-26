@@ -120,6 +120,19 @@ curl -X POST http://localhost:5546/api/claude \
 
 ## 📚 API Documentation
 
+### Interactive API Documentation
+
+The server includes interactive API documentation powered by Swagger UI. Access it at:
+
+**http://localhost:5546/api-docs**
+
+Features:
+- 📖 Browse all available endpoints
+- 🧪 Test APIs directly from your browser
+- 📝 View detailed request/response schemas
+- 🔍 Search and filter endpoints
+- 📄 Download OpenAPI specification: http://localhost:5546/api-docs.json
+
 ### Synchronous Execution
 
 ```http

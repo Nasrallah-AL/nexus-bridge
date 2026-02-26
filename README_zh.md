@@ -120,6 +120,19 @@ curl -X POST http://localhost:5546/api/claude \
 
 ## 📚 API 文档
 
+### 交互式 API 文档
+
+服务器包含由 Swagger UI 提供支持的交互式 API 文档。访问地址：
+
+**http://localhost:5546/api-docs**
+
+功能：
+- 📖 浏览所有可用的 API 端点
+- 🧪 直接在浏览器中测试 API
+- 📝 查看详细的请求/响应模式
+- 🔍 搜索和过滤端点
+- 📄 下载 OpenAPI 规范：http://localhost:5546/api-docs.json
+
 ### 同步执行
 
 ```http
