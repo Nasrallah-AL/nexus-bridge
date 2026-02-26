@@ -7,6 +7,124 @@ const crypto = require('crypto');
 function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionManager = null) {
   const router = require('express').Router();
 
+  /**
+   * @swagger
+   * /api/claude:
+   *   post:
+   *     summary: Execute Claude CLI request
+   *     description: |
+   *       Send a prompt to Claude CLI and get the response.
+   *       Supports both synchronous and asynchronous execution modes.
+   *       Can automatically create sessions for multi-turn conversations.
+   *     tags: [Claude]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/ClaudeRequest'
+   *           examples:
+   *             simple:
+   *               summary: Simple request
+   *               value:
+   *                 prompt: "Explain what HTTP is"
+   *             withSession:
+   *               summary: With session management
+   *               value:
+   *                 prompt: "What is the difference between HTTP and HTTPS?"
+   *                 session_id: "550e8400-e29b-41d4-a716-446655440000"
+   *             advanced:
+   *               summary: With all options
+   *               value:
+   *                 prompt: "Review this code"
+   *                 project_path: "/path/to/project"
+   *                 model: "claude-sonnet-4-5"
+   *                 agent: "code-reviewer"
+   *                 allowed_tools: ["bash", "editor"]
+   *                 max_budget_usd: 5.0
+   *             async:
+   *               summary: Async execution
+   *               value:
+   *                 prompt: "Generate a report"
+   *                 async: true
+   *                 priority: 8
+   *                 webhook_url: "https://your-server.com/webhook"
+   *     responses:
+   *       '200':
+   *         description: Successful synchronous execution
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ClaudeResponse'
+   *             example:
+   *               success: true
+   *               result: "HTTP is the Hypertext Transfer Protocol..."
+   *               duration_ms: 1953
+   *               cost_usd: 0.0975
+   *               session_id: "550e8400-e29b-41d4-a716-446655440000"
+   *       '202':
+   *         description: Async task created successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Task created successfully"
+   *                 task_id:
+   *                   type: string
+   *                   format: uuid
+   *                 status:
+   *                   type: string
+   *                   enum: [pending, processing, completed, failed, cancelled]
+   *                 priority:
+   *                   type: integer
+   *                 session_id:
+   *                   type: string
+   *                   format: uuid
+   *                 webhook_url:
+   *                   type: string
+   *                   format: uri
+   *             example:
+   *               success: true
+   *               message: "Task created successfully"
+   *               task_id: "550e8400-e29b-41d4-a716-446655440001"
+   *               status: "pending"
+   *               priority: 5
+   *               session_id: "550e8400-e29b-41d4-a716-446655440000"
+   *               webhook_url: "https://your-server.com/webhook"
+   *       '400':
+   *         description: Invalid request
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "prompt is required"
+   *       '500':
+   *         description: Server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Internal server error"
+   *       '501':
+   *         description: Feature not implemented
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Streaming is not yet implemented"
+   */
   // POST /api/claude - 单个请求（支持同步和异步）
   router.post('/', async (req, res) => {
     const {
