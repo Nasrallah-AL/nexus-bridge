@@ -6,6 +6,82 @@ const Validators = require('../utils/validators');
 function createSessionRoutes(sessionManager) {
   const router = require('express').Router();
 
+  /**
+   * @swagger
+   * /api/sessions:
+   *   post:
+   *     summary: Create a new session
+   *     description: |
+   *       Create a new conversation session for multi-turn dialogues.
+   *       Sessions automatically track message count, total cost, and conversation history.
+   *       Useful for maintaining context across multiple Claude requests.
+   *     tags: [Sessions]
+   *     requestBody:
+   *       required: false
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/CreateSessionRequest'
+   *           examples:
+   *             minimal:
+   *               summary: Minimal session (uses defaults)
+   *               value: {}
+   *             withProject:
+   *               summary: Session with project path
+   *               value:
+   *                 project_path: "/path/to/project"
+   *             fullOptions:
+   *               summary: Session with all options
+   *               value:
+   *                 project_path: "/path/to/project"
+   *                 model: "claude-sonnet-4-5"
+   *                 metadata:
+   *                   auto_created: false
+   *                   user_id: "user-123"
+   *     responses:
+   *       '201':
+   *         description: Session created successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 session:
+   *                   $ref: '#/components/schemas/Session'
+   *             example:
+   *               success: true
+   *               session:
+   *                 id: "550e8400-e29b-41d4-a716-446655440000"
+   *                 project_path: "/path/to/project"
+   *                 model: "claude-sonnet-4-5"
+   *                 messages_count: 0
+   *                 total_cost_usd: 0
+   *                 status: "active"
+   *                 metadata: {}
+   *                 created_at: "2025-02-26T10:30:00.000Z"
+   *                 updated_at: "2025-02-26T10:30:00.000Z"
+   *       '400':
+   *         description: Invalid request
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Invalid project path"
+   *       '500':
+   *         description: Server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Failed to create session"
+   */
   // POST /api/sessions - 创建会话
   router.post('/', async (req, res) => {
     const validation = Validators.validateSessionCreate(req.body);
@@ -30,6 +106,84 @@ function createSessionRoutes(sessionManager) {
     }
   });
 
+  /**
+   * @swagger
+   * /api/sessions:
+   *   get:
+   *     summary: List all sessions
+   *     description: |
+   *       Retrieve a list of all sessions with optional filtering.
+   *       Supports filtering by status, project path, and limiting results.
+   *       Returns sessions sorted by creation time (newest first).
+   *     tags: [Sessions]
+   *     parameters:
+   *       - name: status
+   *         in: query
+   *         description: Filter by session status
+   *         required: false
+   *         schema:
+   *           type: string
+   *           enum: [active, archived, closed]
+   *         example: "active"
+   *       - name: project_path
+   *         in: query
+   *         description: Filter by project path
+   *         required: false
+   *         schema:
+   *           type: string
+   *         example: "/path/to/project"
+   *       - name: limit
+   *         in: query
+   *         description: Maximum number of sessions to return
+   *         required: false
+   *         schema:
+   *           type: integer
+   *           minimum: 1
+   *           maximum: 1000
+   *           default: 100
+   *         example: 50
+   *     responses:
+   *       '200':
+   *         description: List of sessions retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 sessions:
+   *                   type: array
+   *                   items:
+   *                     $ref: '#/components/schemas/Session'
+   *                 count:
+   *                   type: integer
+   *                   description: Number of sessions returned
+   *                   example: 10
+   *             example:
+   *               success: true
+   *               sessions:
+   *                 - id: "550e8400-e29b-41d4-a716-446655440000"
+   *                   project_path: "/path/to/project"
+   *                   model: "claude-sonnet-4-5"
+   *                   messages_count: 5
+   *                   total_cost_usd: 0.4875
+   *                   status: "active"
+   *                   metadata: {}
+   *                   created_at: "2025-02-26T10:30:00.000Z"
+   *                   updated_at: "2025-02-26T10:35:00.000Z"
+   *               count: 1
+   *       '500':
+   *         description: Server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Failed to retrieve sessions"
+   */
   // GET /api/sessions - 列出会话
   router.get('/', async (req, res) => {
     try {
@@ -82,6 +236,68 @@ function createSessionRoutes(sessionManager) {
     }
   });
 
+  /**
+   * @swagger
+   * /api/sessions/{id}:
+   *   get:
+   *     summary: Get session details
+   *     description: |
+   *       Retrieve detailed information about a specific session by its ID.
+   *       Includes all session metadata, message counts, and cost tracking.
+   *     tags: [Sessions]
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         description: Session UUID
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         example: "550e8400-e29b-41d4-a716-446655440000"
+   *     responses:
+   *       '200':
+   *         description: Session details retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 session:
+   *                   $ref: '#/components/schemas/Session'
+   *             example:
+   *               success: true
+   *               session:
+   *                 id: "550e8400-e29b-41d4-a716-446655440000"
+   *                 project_path: "/path/to/project"
+   *                 model: "claude-sonnet-4-5"
+   *                 messages_count: 5
+   *                 total_cost_usd: 0.4875
+   *                 status: "active"
+   *                 metadata: {}
+   *                 created_at: "2025-02-26T10:30:00.000Z"
+   *                 updated_at: "2025-02-26T10:35:00.000Z"
+   *       '404':
+   *         description: Session not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Session not found"
+   *       '500':
+   *         description: Server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Failed to retrieve session"
+   */
   // GET /api/sessions/:id - 获取会话详情
   router.get('/:id', async (req, res) => {
     try {
@@ -105,6 +321,129 @@ function createSessionRoutes(sessionManager) {
     }
   });
 
+  /**
+   * @swagger
+   * /api/sessions/{id}/continue:
+   *   post:
+   *     summary: Continue conversation in session
+   *     description: |
+   *       Send a follow-up prompt to continue a conversation in an existing session.
+   *       The session maintains context from previous messages.
+   *       Automatically updates message count and cost tracking.
+   *     tags: [Sessions]
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         description: Session UUID
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         example: "550e8400-e29b-41d4-a716-446655440000"
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - prompt
+   *             properties:
+   *               prompt:
+   *                 type: string
+   *                 description: The follow-up prompt to send
+   *                 example: "Can you explain that in more detail?"
+   *               system_prompt:
+   *                 type: string
+   *                 description: Optional system prompt override
+   *                 example: "You are a helpful assistant."
+   *               max_budget_usd:
+   *                 type: number
+   *                 format: float
+   *                 description: Maximum budget for this request
+   *                 example: 1.0
+   *               allowed_tools:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *                 description: List of allowed tools
+   *                 example: ["bash", "editor"]
+   *               disallowed_tools:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *                 description: List of disallowed tools
+   *                 example: ["web-search"]
+   *           examples:
+   *             simple:
+   *               summary: Simple continuation
+   *               value:
+   *                 prompt: "Can you explain that in more detail?"
+   *             withTools:
+   *               summary: With tool restrictions
+   *               value:
+   *                 prompt: "Review this code"
+   *                 allowed_tools: ["bash", "editor"]
+   *                 max_budget_usd: 2.0
+   *     responses:
+   *       '200':
+   *         description: Conversation continued successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 result:
+   *                   type: string
+   *                   description: Claude's response
+   *                 session_id:
+   *                   type: string
+   *                   format: uuid
+   *                   description: Session ID
+   *                 duration_ms:
+   *                   type: integer
+   *                   description: Request duration in milliseconds
+   *                 cost_usd:
+   *                   type: number
+   *                   format: float
+   *                   description: Cost of this request in USD
+   *             example:
+   *               success: true
+   *               result: "Certainly! Let me explain in more detail..."
+   *               session_id: "550e8400-e29b-41d4-a716-446655440000"
+   *               duration_ms: 2150
+   *               cost_usd: 0.1075
+   *       '400':
+   *         description: Invalid request
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "prompt is required"
+   *       '404':
+   *         description: Session not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Session not found"
+   *       '500':
+   *         description: Server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Failed to continue session"
+   */
   // POST /api/sessions/:id/continue - 继续会话
   router.post('/:id/continue', async (req, res) => {
     const validation = Validators.validateSessionContinue(req.body);
@@ -154,6 +493,61 @@ function createSessionRoutes(sessionManager) {
     }
   });
 
+  /**
+   * @swagger
+   * /api/sessions/{id}:
+   *   delete:
+   *     summary: Delete a session
+   *     description: |
+   *       Permanently delete a session and all its associated data.
+   *       This action cannot be undone. Use with caution.
+   *       All conversation history and metadata will be removed.
+   *     tags: [Sessions]
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         description: Session UUID
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         example: "550e8400-e29b-41d4-a716-446655440000"
+   *     responses:
+   *       '200':
+   *         description: Session deleted successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Session deleted successfully"
+   *             example:
+   *               success: true
+   *               message: "Session deleted successfully"
+   *       '404':
+   *         description: Session not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Session not found"
+   *       '500':
+   *         description: Server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Failed to delete session"
+   */
   // DELETE /api/sessions/:id - 删除会话
   router.delete('/:id', async (req, res) => {
     try {
