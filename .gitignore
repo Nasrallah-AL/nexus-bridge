@@ -24,6 +24,9 @@ config.json # Local configuration, should not be committed
 *.swp
 .history/
 
+# Git worktrees
+.worktrees/
+
 # OS generated files
 .DS_Store
 .Trash
