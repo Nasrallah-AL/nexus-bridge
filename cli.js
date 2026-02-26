@@ -593,7 +593,7 @@ async function showApiDocs() {
   // 2. Claude API
   console.log(chalk.bold.green('2. Claude AI 对话'));
   console.log(chalk.gray('─'.repeat(60)));
-  console.log(chalk.cyan('POST /api/claude'));
+  console.log(chalk.cyan('POST /api/messages (同步)'));
   console.log('');
   console.log(chalk.white('描述: ') + '发送提示给 Claude AI 并获取回复');
   console.log('');
@@ -642,14 +642,14 @@ async function showApiDocs() {
   console.log(chalk.gray('# 健康检查'));
   console.log(chalk.white(`curl http://localhost:${config.port}/health`));
   console.log('');
-  console.log(chalk.gray('# 调用 Claude'));
-  console.log(chalk.white(`curl -X POST http://localhost:${config.port}/api/claude \\`));
+  console.log(chalk.gray('# 调用 Claude (同步)'));
+  console.log(chalk.white(`curl -X POST http://localhost:${config.port}/api/messages \\`));
   console.log(chalk.white('  -H "Content-Type: application/json" \\'));
   console.log(chalk.white('  -d \'{"prompt": "解释一下什么是 HTTP"}\''));
   console.log('');
   console.log(chalk.cyan('Node.js 示例:'));
   console.log('');
-  console.log('const response = await fetch(`http://localhost:' + config.port + '/api/claude`, {');
+  console.log('const response = await fetch(`http://localhost:' + config.port + '/api/messages`, {');
   console.log('  method: "POST",');
   console.log('  headers: { "Content-Type": "application/json" },');
   console.log('  body: JSON.stringify({ prompt: "你的问题" })');
@@ -682,7 +682,7 @@ async function testApi() {
 
     // 测试 Claude Code API
     const spinner2 = ora('测试 Claude Code API...').start();
-    const claudeResponse = await fetch(`http://localhost:${config.port}/api/claude`, {
+    const claudeResponse = await fetch(`http://localhost:${config.port}/api/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: 'Say hello' }),

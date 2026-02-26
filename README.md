@@ -112,11 +112,10 @@ node cli.js status  # Check status
 # Health check
 curl http://localhost:5546/health
 
-# Test API
-curl -X POST http://localhost:5546/api/claude \
+# Test API (synchronous)
+curl -X POST http://localhost:5546/api/messages \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Explain what HTTP is"}'
-```
 
 ## 📚 API Documentation
 
@@ -133,44 +132,13 @@ Features:
 - 🔍 Search and filter endpoints
 - 📄 Download OpenAPI specification: http://localhost:5546/api-docs.json
 
-### Synchronous Execution
+### Quick Example
 
-```http
-POST /api/claude
-Content-Type: application/json
-
-{
-  "prompt": "Explain what HTTP is",
-  "project_path": "/path/to/project",
-  "model": "claude-sonnet-4-5",
-  "session_id": "optional-session-id",
-  "system_prompt": "You are a helpful assistant",
-  "max_budget_usd": 10.0,
-  "allowed_tools": ["bash", "editor"],
-  "disallowed_tools": ["browser"],
-  "agent": "code-reviewer",
-  "mcp_config": {},
-  "stream": false
-}
+```bash
+curl -X POST http://localhost:5546/api/messages \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Explain what HTTP is"}'
 ```
-
-**Parameters:**
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `prompt` | string | Yes | - | The prompt to send to Claude |
-| `project_path` | string | No | From config | Project working directory |
-| `model` | string | No | From config | Claude model to use |
-| `session_id` | string | No | Auto-created | Session ID for multi-turn conversations |
-| `system_prompt` | string | No | - | System prompt for the session |
-| `max_budget_usd` | number | No | From config | Maximum budget in USD |
-| `allowed_tools` | array | No | - | List of allowed tools |
-| `disallowed_tools` | array | No | - | List of disallowed tools |
-| `agent` | string | No | - | Agent to use for the request |
-| `mcp_config` | object | No | - | MCP configuration |
-| `stream` | boolean | No | false | Enable streaming (not yet implemented) |
-| `async` | boolean | No | false | Execute asynchronously |
-| `webhook_url` | string | No | From config | Webhook URL for async callbacks |
-| `priority` | number | No | 5 | Task priority (1-10) for async mode |
 
 **Response:**
 ```json
@@ -183,145 +151,7 @@ Content-Type: application/json
 }
 ```
 
-### Asynchronous Execution
-
-```http
-POST /api/claude
-Content-Type: application/json
-
-{
-  "prompt": "Explain what HTTP is",
-  "async": true,
-  "project_path": "/path/to/project",
-  "model": "claude-sonnet-4-5",
-  "session_id": "optional-session-id",
-  "system_prompt": "You are a helpful assistant",
-  "max_budget_usd": 10.0,
-  "allowed_tools": ["bash", "editor"],
-  "disallowed_tools": ["browser"],
-  "agent": "code-reviewer",
-  "mcp_config": {},
-  "priority": 5,
-  "webhook_url": "https://your-server.com/webhook"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Task created successfully",
-  "task_id": "uuid",
-  "status": "pending",
-  "priority": 5,
-  "session_id": "auto-created-or-provided",
-  "webhook_url": "https://your-server.com/webhook"
-}
-```
-
-### Session Management
-
-**Create Session:**
-```http
-POST /api/sessions
-Content-Type: application/json
-
-{
-  "project_path": "/path/to/project",
-  "model": "claude-sonnet-4-5"
-}
-```
-
-**Continue Conversation:**
-```http
-POST /api/sessions/:id/continue
-Content-Type: application/json
-
-{
-  "prompt": "What's the difference between it and HTTPS?"
-}
-```
-
-**List Sessions:**
-```http
-GET /api/sessions
-```
-
-**View Session Details:**
-```http
-GET /api/sessions/:id
-```
-
-**Delete Session:**
-```http
-DELETE /api/sessions/:id
-```
-
-### Task Management
-
-**Create Async Task:**
-```http
-POST /api/tasks/async
-Content-Type: application/json
-
-{
-  "prompt": "Explain what HTTP is",
-  "priority": 8,
-  "webhook_url": "https://your-server.com/webhook"
-}
-```
-
-**View Task Status:**
-```http
-GET /api/tasks/:id
-```
-
-**Adjust Task Priority:**
-```http
-PATCH /api/tasks/:id/priority
-Content-Type: application/json
-
-{
-  "priority": 10
-}
-```
-
-**Cancel Task:**
-```http
-DELETE /api/tasks/:id
-```
-
-**View Queue Status:**
-```http
-GET /api/tasks/queue/status
-```
-
-### Batch Processing
-
-```http
-POST /api/claude/batch
-Content-Type: application/json
-
-{
-  "prompts": [
-    "Explain what is HTTP",
-    "Explain what is HTTPS",
-    "Explain what is TCP"
-  ]
-}
-```
-
-### Statistics Query
-
-**View Statistics Summary:**
-```http
-GET /api/statistics/summary
-```
-
-**View Daily Statistics:**
-```http
-GET /api/statistics
-```
+For complete API reference including all endpoints, parameters, and response codes, please visit the **interactive Swagger UI** at **http://localhost:5546/api-docs**.
 
 ## 🖥️ TUI Management Tool
 

@@ -112,11 +112,10 @@ node cli.js status  # 查看状态
 # 健康检查
 curl http://localhost:5546/health
 
-# 测试 API
-curl -X POST http://localhost:5546/api/claude \
+# 测试 API（同步）
+curl -X POST http://localhost:5546/api/messages \
   -H "Content-Type: application/json" \
   -d '{"prompt": "解释一下什么是 HTTP"}'
-```
 
 ## 📚 API 文档
 
@@ -133,44 +132,13 @@ curl -X POST http://localhost:5546/api/claude \
 - 🔍 搜索和过滤端点
 - 📄 下载 OpenAPI 规范：http://localhost:5546/api-docs.json
 
-### 同步执行
+### 快速示例
 
-```http
-POST /api/claude
-Content-Type: application/json
-
-{
-  "prompt": "解释一下什么是 HTTP",
-  "project_path": "/path/to/project",
-  "model": "claude-sonnet-4-5",
-  "session_id": "optional-session-id",
-  "system_prompt": "You are a helpful assistant",
-  "max_budget_usd": 10.0,
-  "allowed_tools": ["bash", "editor"],
-  "disallowed_tools": ["browser"],
-  "agent": "code-reviewer",
-  "mcp_config": {},
-  "stream": false
-}
+```bash
+curl -X POST http://localhost:5546/api/messages \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "解释一下什么是 HTTP"}'
 ```
-
-**参数说明：**
-| 参数 | 类型 | 必需 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `prompt` | string | 是 | - | 发送给 Claude 的提示词 |
-| `project_path` | string | 否 | 来自配置 | 项目工作目录 |
-| `model` | string | 否 | 来自配置 | 使用的 Claude 模型 |
-| `session_id` | string | 否 | 自动创建 | 多轮对话的会话 ID |
-| `system_prompt` | string | 否 | - | 会话的系统提示词 |
-| `max_budget_usd` | number | 否 | 来自配置 | 最大预算（美元） |
-| `allowed_tools` | array | 否 | - | 允许使用的工具列表 |
-| `disallowed_tools` | array | 否 | - | 禁止使用的工具列表 |
-| `agent` | string | 否 | - | 请求使用的代理 |
-| `mcp_config` | object | 否 | - | MCP 配置 |
-| `stream` | boolean | 否 | false | 启用流式输出（暂未实现） |
-| `async` | boolean | 否 | false | 异步执行 |
-| `webhook_url` | string | 否 | 来自配置 | 异步回调的 Webhook URL |
-| `priority` | number | 否 | 5 | 异步模式下的任务优先级（1-10） |
 
 **响应：**
 ```json
@@ -183,145 +151,7 @@ Content-Type: application/json
 }
 ```
 
-### 异步执行
-
-```http
-POST /api/claude
-Content-Type: application/json
-
-{
-  "prompt": "解释一下什么是 HTTP",
-  "async": true,
-  "project_path": "/path/to/project",
-  "model": "claude-sonnet-4-5",
-  "session_id": "optional-session-id",
-  "system_prompt": "You are a helpful assistant",
-  "max_budget_usd": 10.0,
-  "allowed_tools": ["bash", "editor"],
-  "disallowed_tools": ["browser"],
-  "agent": "code-reviewer",
-  "mcp_config": {},
-  "priority": 5,
-  "webhook_url": "https://your-server.com/webhook"
-}
-```
-
-**响应：**
-```json
-{
-  "success": true,
-  "message": "Task created successfully",
-  "task_id": "uuid",
-  "status": "pending",
-  "priority": 5,
-  "session_id": "auto-created-or-provided",
-  "webhook_url": "https://your-server.com/webhook"
-}
-```
-
-### 会话管理
-
-**创建会话：**
-```http
-POST /api/sessions
-Content-Type: application/json
-
-{
-  "project_path": "/path/to/project",
-  "model": "claude-sonnet-4-5"
-}
-```
-
-**继续对话：**
-```http
-POST /api/sessions/:id/continue
-Content-Type: application/json
-
-{
-  "prompt": "那它和 HTTPS 的区别是什么？"
-}
-```
-
-**列出会话：**
-```http
-GET /api/sessions
-```
-
-**查看会话详情：**
-```http
-GET /api/sessions/:id
-```
-
-**删除会话：**
-```http
-DELETE /api/sessions/:id
-```
-
-### 任务管理
-
-**创建异步任务：**
-```http
-POST /api/tasks/async
-Content-Type: application/json
-
-{
-  "prompt": "解释一下什么是 HTTP",
-  "priority": 8,
-  "webhook_url": "https://your-server.com/webhook"
-}
-```
-
-**查看任务状态：**
-```http
-GET /api/tasks/:id
-```
-
-**调整任务优先级：**
-```http
-PATCH /api/tasks/:id/priority
-Content-Type: application/json
-
-{
-  "priority": 10
-}
-```
-
-**取消任务：**
-```http
-DELETE /api/tasks/:id
-```
-
-**查看队列状态：**
-```http
-GET /api/tasks/queue/status
-```
-
-### 批量处理
-
-```http
-POST /api/claude/batch
-Content-Type: application/json
-
-{
-  "prompts": [
-    "解释什么是 HTTP",
-    "解释什么是 HTTPS",
-    "解释什么是 TCP"
-  ]
-}
-```
-
-### 统计查询
-
-**查看统计摘要：**
-```http
-GET /api/statistics/summary
-```
-
-**查看每日统计：**
-```http
-GET /api/statistics
-```
+完整的 API 参考文档（包括所有端点、参数和响应代码），请访问位于 **http://localhost:5546/api-docs** 的**交互式 Swagger UI**。
 
 ## 🖥️ TUI 管理工具
 

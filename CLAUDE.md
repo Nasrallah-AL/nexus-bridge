@@ -40,8 +40,13 @@ node cli.js status   # Check server status
 # Health check
 curl http://localhost:5546/health
 
-# Test Claude execution
-curl -X POST http://localhost:5546/api/claude \
+# Test Claude execution (synchronous)
+curl -X POST http://localhost:5546/api/messages \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Explain what HTTP is"}'
+
+# Test Claude execution (asynchronous)
+curl -X POST http://localhost:5546/api/async/messages \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Explain what HTTP is"}'
 ```
@@ -130,7 +135,10 @@ All stores extend **BaseStore** (`src/storage/baseStore.js`):
 
 Routes are factory functions that receive dependencies:
 ```javascript
-app.use('/api/claude', createClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager));
+// Synchronous messages and batch processing
+app.use('/api/messages', createClaudeRoutes(claudeExecutor, config, null, sessionManager));
+// Asynchronous message processing
+app.use('/api/async/messages', createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager));
 ```
 
 Each route handler:
