@@ -132,9 +132,32 @@ Content-Type: application/json
   "model": "claude-sonnet-4-5",
   "session_id": "optional-session-id",
   "system_prompt": "You are a helpful assistant",
-  "max_budget_usd": 10.0
+  "max_budget_usd": 10.0,
+  "allowed_tools": ["bash", "editor"],
+  "disallowed_tools": ["browser"],
+  "agent": "code-reviewer",
+  "mcp_config": {},
+  "stream": false
 }
 ```
+
+**参数说明：**
+| 参数 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `prompt` | string | 是 | - | 发送给 Claude 的提示词 |
+| `project_path` | string | 否 | 来自配置 | 项目工作目录 |
+| `model` | string | 否 | 来自配置 | 使用的 Claude 模型 |
+| `session_id` | string | 否 | 自动创建 | 多轮对话的会话 ID |
+| `system_prompt` | string | 否 | - | 会话的系统提示词 |
+| `max_budget_usd` | number | 否 | 来自配置 | 最大预算（美元） |
+| `allowed_tools` | array | 否 | - | 允许使用的工具列表 |
+| `disallowed_tools` | array | 否 | - | 禁止使用的工具列表 |
+| `agent` | string | 否 | - | 请求使用的代理 |
+| `mcp_config` | object | 否 | - | MCP 配置 |
+| `stream` | boolean | 否 | false | 启用流式输出（暂未实现） |
+| `async` | boolean | 否 | false | 异步执行 |
+| `webhook_url` | string | 否 | 来自配置 | 异步回调的 Webhook URL |
+| `priority` | number | 否 | 5 | 异步模式下的任务优先级（1-10） |
 
 **响应：**
 ```json
@@ -156,6 +179,15 @@ Content-Type: application/json
 {
   "prompt": "解释一下什么是 HTTP",
   "async": true,
+  "project_path": "/path/to/project",
+  "model": "claude-sonnet-4-5",
+  "session_id": "optional-session-id",
+  "system_prompt": "You are a helpful assistant",
+  "max_budget_usd": 10.0,
+  "allowed_tools": ["bash", "editor"],
+  "disallowed_tools": ["browser"],
+  "agent": "code-reviewer",
+  "mcp_config": {},
   "priority": 5,
   "webhook_url": "https://your-server.com/webhook"
 }
@@ -165,10 +197,12 @@ Content-Type: application/json
 ```json
 {
   "success": true,
+  "message": "Task created successfully",
   "task_id": "uuid",
   "status": "pending",
   "priority": 5,
-  "session_id": "auto-created"
+  "session_id": "auto-created-or-provided",
+  "webhook_url": "https://your-server.com/webhook"
 }
 ```
 
