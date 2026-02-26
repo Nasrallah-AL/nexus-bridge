@@ -16,39 +16,121 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
    *       Send a prompt to Claude CLI and get the response synchronously.
    *       Automatically creates sessions for multi-turn conversations.
    *       Returns the result immediately after execution.
+   *
    *     tags: [Messages]
    *     requestBody:
    *       required: true
    *       content:
    *         application/json:
    *           schema:
-   *             $ref: '#/components/schemas/ClaudeRequest'
+   *             type: object
+   *             required:
+   *               - prompt
+   *             properties:
+   *               prompt:
+   *                 type: string
+   *                 description: The prompt to send to Claude
+   *                 example: "Explain what HTTP is"
+   *               project_path:
+   *                 type: string
+   *                 description: Project working directory (absolute path)
+   *                 example: "/Users/john/my-project"
+   *               session_id:
+   *                 type: string
+   *                 format: uuid
+   *                 description: |
+   *                   Session ID for multi-turn conversations.
+   *                   Must be a valid UUID. If provided, the system will check if the session exists:
+   *                   - New session (messages_count = 0): Uses --session-id to create
+   *                   - Existing session (messages_count > 0): Uses --resume to continue
+   *
+   *                   Example UUID: 4f56fb22-dbaf-44fa-bc91-b0053edbeb381
+   *                 example: "550e8400-e29b-41d4-a716-446655440000"
+   *               model:
+   *                 type: string
+   *                 description: Claude model to use
+   *                 example: "claude-sonnet-4-5"
+   *               system_prompt:
+   *                 type: string
+   *                 description: System prompt for the session
+   *                 example: "You are a helpful assistant"
+   *               max_budget_usd:
+   *                 type: number
+   *                 format: float
+   *                 description: Maximum budget in USD
+   *                 example: 10.0
+   *                 minimum: 0
+   *               allowed_tools:
+   *                 type: array
+   *                 description: List of allowed tools
+   *                 items:
+   *                   type: string
+   *                 example: ["bash", "editor"]
+   *               disallowed_tools:
+   *                 type: array
+   *                 description: List of disallowed tools
+   *                 items:
+   *                   type: string
+   *                 example: ["browser"]
+   *               agent:
+   *                 type: string
+   *                 description: Agent to use for the request
+   *                 example: "code-reviewer"
+   *               mcp_config:
+   *                 type: string
+   *                 description: MCP configuration file path (JSON)
+   *                 example: "/path/to/mcp-config.json"
+   *               stream:
+   *                 type: boolean
+   *                 description: Enable streaming (not yet implemented)
+   *                 default: false
    *           examples:
    *             simple:
-   *               summary: Simple request
+   *               summary: Simple request with project path
    *               value:
    *                 prompt: "Explain what HTTP is"
+   *                 project_path: "/Users/john/my-project"
    *             withSession:
    *               summary: With session management
    *               value:
    *                 prompt: "What is the difference between HTTP and HTTPS?"
-   *                 session_id: "550e8400-e29b-41d4-a716-446655440000"
+   *                 project_path: "/Users/john/my-project"
+   *                 session_id: "4f56fb22-dbaf-44fa-bc91-b0053edbeb381"
    *             advanced:
    *               summary: With all options
    *               value:
    *                 prompt: "Review this code"
-   *                 project_path: "/path/to/project"
+   *                 project_path: "/Users/john/my-project"
    *                 model: "claude-sonnet-4-5"
    *                 agent: "code-reviewer"
    *                 allowed_tools: ["bash", "editor"]
    *                 max_budget_usd: 5.0
+   *                 session_id: "550e8400-e29b-41d4-a716-446655440000"
    *     responses:
    *       '200':
    *         description: Successful execution
    *         content:
    *           application/json:
    *             schema:
-   *               $ref: '#/components/schemas/ClaudeResponse'
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 result:
+   *                   type: string
+   *                   example: "HTTP is the Hypertext Transfer Protocol..."
+   *                 duration_ms:
+   *                   type: integer
+   *                   example: 1953
+   *                 cost_usd:
+   *                   type: number
+   *                   format: float
+   *                   example: 0.0975
+   *                 session_id:
+   *                   type: string
+   *                   format: uuid
+   *                   example: "550e8400-e29b-41d4-a716-446655440000"
    *             example:
    *               success: true
    *               result: "HTTP is the Hypertext Transfer Protocol..."
@@ -60,7 +142,14 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
    *         content:
    *           application/json:
    *             schema:
-   *               $ref: '#/components/schemas/ErrorResponse'
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "prompt is required"
    *             example:
    *               success: false
    *               error: "prompt is required"
@@ -69,7 +158,14 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
    *         content:
    *           application/json:
    *             schema:
-   *               $ref: '#/components/schemas/ErrorResponse'
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Internal server error"
    *             example:
    *               success: false
    *               error: "Internal server error"
@@ -78,7 +174,14 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
    *         content:
    *           application/json:
    *             schema:
-   *               $ref: '#/components/schemas/ErrorResponse'
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: false
+   *                 error:
+   *                   type: string
+   *                   example: "Streaming is not yet implemented"
    *             example:
    *               success: false
    *               error: "Streaming is not yet implemented"
@@ -176,7 +279,26 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
    *       content:
    *         application/json:
    *           schema:
-   *             $ref: '#/components/schemas/BatchRequest'
+   *             type: object
+   *             required:
+   *               - prompts
+   *             properties:
+   *               prompts:
+   *                 type: array
+   *                 description: Array of prompts to execute
+   *                 minItems: 1
+   *                 maxItems: 10
+   *                 items:
+   *                   type: string
+   *                 example: ["Explain what HTTP is", "What is HTTPS?", "What is a REST API?"]
+   *               project_path:
+   *                 type: string
+   *                 description: Project working directory (absolute path, applied to all prompts)
+   *                 example: "/Users/john/my-project"
+   *               model:
+   *                 type: string
+   *                 description: Claude model to use (applied to all prompts)
+   *                 example: "claude-sonnet-4-5"
    *           examples:
    *             simple:
    *               summary: Simple batch request
@@ -185,20 +307,15 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
    *                   - "Explain what HTTP is"
    *                   - "What is HTTPS?"
    *                   - "What is a REST API?"
-   *             withProject:
-   *               summary: Batch with custom project path
-   *               value:
-   *                 prompts:
-   *                   - "Review the authentication code"
-   *                   - "Check for security issues"
-   *                 project_path: "/path/to/project"
+   *                 project_path: "/Users/john/my-project"
    *             withModel:
    *               summary: Batch with specific model
    *               value:
    *                 prompts:
-   *                   - "Generate unit tests"
+  *                   - "Generate unit tests"
    *                   - "Generate integration tests"
-   *                   - "Generate E2E tests"
+  *                   - "Generate E2E tests"
+   *                 project_path: "/Users/john/my-project"
    *                 model: "claude-sonnet-4-5"
    *     responses:
    *       '200':
@@ -206,14 +323,73 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
    *         content:
    *           application/json:
    *             schema:
-   *               $ref: '#/components/schemas/BatchResponse'
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 results:
+   *                   type: array
+   *                   items:
+  *                     type: object
+   *                     properties:
+  *                       success:
+  *                         type: boolean
+  *                         example: true
+   *                       result:
+  *                         type: string
+  *                       duration_ms:
+  *                         type: integer
+  *                         example: 1953
+  *                       cost_usd:
+  *                         type: number
+  *                         format: float
+  *                         example: 0.0975
+   *                 summary:
+   *                   type: object
+   *                   properties:
+  *                     total:
+  *                       type: integer
+  *                       description: Total number of requests
+  *                       example: 3
+  *                     successful:
+  *                       type: integer
+  *                       description: Number of successful requests
+  *                       example: 3
+  *                     failed:
+  *                       type: integer
+  *                       description: Number of failed requests
+  *                       example: 0
+  *                     total_cost_usd:
+  *                       type: number
+  *                       format: float
+  *                       description: Total cost in USD
+  *                       example: 0.2963
+  *                     total_duration_ms:
+  *                       type: integer
+  *                       description: Total duration in milliseconds
+  *                       example: 5929
    *             example:
    *               success: true
-   *               results:
-   *                 - success: true
-   *                   result: "HTTP is the Hypertext Transfer Protocol..."
-   *                   duration_ms: 1953
-   *                   cost_usd: 0.0975
+  *               results:
+  *                 - success: true
+  *                   result: "HTTP is the Hypertext Transfer Protocol..."
+  *                   duration_ms: 1953
+  *                   cost_usd: 0.0975
+  *                 - success: true
+  *                   result: "HTTPS is HTTP over SSL/TLS..."
+  *                   duration_ms: 2100
+  *                   cost_usd: 0.1050
+  *                 - success: true
+  *                   result: "A REST API is an architectural style..."
+  *                   duration_ms: 1876
+  *                   cost_usd: 0.0938
+  *               summary:
+  *                 total: 3
+  *                 successful: 3
+  *                 failed: 0
+  *                 total_cost_usd: 0.2963
+  *                 total_duration_ms: 5929
    *                 - success: true
    *                   result: "HTTPS is HTTP over SSL/TLS..."
    *                   duration_ms: 2100
@@ -327,27 +503,38 @@ function createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManag
    *               summary: Simple async request
    *               value:
    *                 prompt: "Generate a comprehensive report"
+   *                 project_path: "/Users/john/my-project"
    *                 priority: 5
+   *             withSession:
+   *               summary: Async with session management
+   *               value:
+   *                 prompt: "Continue with the previous analysis"
+   *                 project_path: "/Users/john/my-project"
+   *                 session_id: "4f56fb22-dbaf-44fa-bc91-b0053edbeb381"
+   *                 priority: 6
    *             highPriority:
    *               summary: High priority async task
    *               value:
    *                 prompt: "Analyze entire codebase"
+   *                 project_path: "/Users/john/my-project"
    *                 priority: 8
    *             withWebhook:
    *               summary: Async with webhook callback
    *               value:
    *                 prompt: "Process large dataset"
+   *                 project_path: "/Users/john/my-project"
    *                 priority: 7
    *                 webhook_url: "https://your-server.com/webhook"
    *             advanced:
    *               summary: Async with all options
    *               value:
    *                 prompt: "Generate documentation"
-   *                 project_path: "/path/to/project"
+   *                 project_path: "/Users/john/my-project"
    *                 model: "claude-sonnet-4-5"
    *                 agent: "documentation-writer"
    *                 priority: 9
    *                 webhook_url: "https://your-server.com/webhook"
+   *                 session_id: "550e8400-e29b-41d4-a716-446655440000"
    *     responses:
    *       '202':
    *         description: Async task created successfully

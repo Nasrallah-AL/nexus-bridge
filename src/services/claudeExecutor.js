@@ -29,6 +29,29 @@ class ClaudeExecutor {
       stream = false,
     } = options;
 
+    // 检查会话是否存在以及是否已被使用
+    let sessionExists = false;
+    if (sessionId && this.sessionStore) {
+      try {
+        const session = await this.sessionStore.get(sessionId);
+        // 会话存在且有消息记录，说明应该使用 --resume
+        sessionExists = !!(session && session.messages_count > 0);
+        this.logger.info(`Session check`, {
+          session_id: sessionId,
+          exists: !!session,
+          messages_count: session?.messages_count || 0,
+          will_resume: sessionExists
+        });
+      } catch (err) {
+        // 如果查询失败，假设会话不存在
+        sessionExists = false;
+        this.logger.debug(`Session check failed, assuming new session`, {
+          session_id: sessionId,
+          error: err.message
+        });
+      }
+    }
+
     // 预算控制：检查会话当前花费
     if (sessionId && maxBudgetUsd && this.sessionStore) {
       const session = await this.sessionStore.get(sessionId);
@@ -56,6 +79,7 @@ class ClaudeExecutor {
         prompt,
         model,
         sessionId,
+        sessionExists,
         systemPrompt,
         maxBudgetUsd,
         allowedTools,
@@ -72,7 +96,32 @@ class ClaudeExecutor {
       });
 
       // 使用 spawn 异步执行
-      const result = await this.spawnCommand(projectPath, args);
+      let result;
+      try {
+        result = await this.spawnCommand(projectPath, args);
+      } catch (spawnErr) {
+        // 如果是 "Session ID already in use" 错误，尝试使用 --resume 重试
+        if (sessionId && spawnErr.message && spawnErr.message.includes('Session ID') && spawnErr.message.includes('already in use')) {
+          this.logger.warn(`Session already in use, retrying with --resume`, {
+            session_id: sessionId,
+            error: spawnErr.message
+          });
+
+          // 移除 --session-id 或 --resume，添加 --resume
+          const retryArgs = args.filter(arg => arg !== '--session-id' && arg !== '--resume' && arg !== sessionId);
+          retryArgs.push('--resume', sessionId);
+
+          this.logger.info(`Retrying with --resume`, {
+            args: retryArgs.join(' ').substring(0, 200) + '...',
+          });
+
+          result = await this.spawnCommand(projectPath, retryArgs);
+          this.logger.info(`Successfully resumed session`, { session_id: sessionId });
+        } else {
+          // 其他错误，直接抛出
+          throw spawnErr;
+        }
+      }
 
       const duration = Date.now() - startTime;
       const costUsd = result.total_cost_usd || 0;
@@ -221,6 +270,7 @@ class ClaudeExecutor {
       prompt,
       model,
       sessionId,
+      sessionExists = false,
       systemPrompt,
       maxBudgetUsd,
       allowedTools,
@@ -236,9 +286,17 @@ class ClaudeExecutor {
       args.push('--model', model);
     }
 
-    // 添加会话 ID
+    // 添加会话 ID 或恢复会话
     if (sessionId) {
-      args.push('--session-id', sessionId);
+      if (sessionExists) {
+        // 会话已存在，使用 --resume 恢复会话
+        args.push('--resume', sessionId);
+        this.logger.info(`Resuming existing session`, { session_id: sessionId });
+      } else {
+        // 会话不存在，使用 --session-id 创建新会话
+        args.push('--session-id', sessionId);
+        this.logger.info(`Creating new session`, { session_id: sessionId });
+      }
     }
 
     // 添加系统提示
