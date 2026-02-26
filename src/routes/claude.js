@@ -2,21 +2,21 @@ const Validators = require('../utils/validators');
 const crypto = require('crypto');
 
 /**
- * Claude API 路由
+ * Claude API 路由 (同步)
  */
 function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionManager = null) {
   const router = require('express').Router();
 
   /**
    * @swagger
-   * /api/claude:
+   * /api/messages:
    *   post:
-   *     summary: Execute Claude CLI request
+   *     summary: Send message to Claude (Synchronous)
    *     description: |
-   *       Send a prompt to Claude CLI and get the response.
-   *       Supports both synchronous and asynchronous execution modes.
-   *       Can automatically create sessions for multi-turn conversations.
-   *     tags: [Claude]
+   *       Send a prompt to Claude CLI and get the response synchronously.
+   *       Automatically creates sessions for multi-turn conversations.
+   *       Returns the result immediately after execution.
+   *     tags: [Messages]
    *     requestBody:
    *       required: true
    *       content:
@@ -42,16 +42,9 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
    *                 agent: "code-reviewer"
    *                 allowed_tools: ["bash", "editor"]
    *                 max_budget_usd: 5.0
-   *             async:
-   *               summary: Async execution
-   *               value:
-   *                 prompt: "Generate a report"
-   *                 async: true
-   *                 priority: 8
-   *                 webhook_url: "https://your-server.com/webhook"
    *     responses:
    *       '200':
-   *         description: Successful synchronous execution
+   *         description: Successful execution
    *         content:
    *           application/json:
    *             schema:
@@ -62,41 +55,6 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
    *               duration_ms: 1953
    *               cost_usd: 0.0975
    *               session_id: "550e8400-e29b-41d4-a716-446655440000"
-   *       '202':
-   *         description: Async task created successfully
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                   example: true
-   *                 message:
-   *                   type: string
-   *                   example: "Task created successfully"
-   *                 task_id:
-   *                   type: string
-   *                   format: uuid
-   *                 status:
-   *                   type: string
-   *                   enum: [pending, processing, completed, failed, cancelled]
-   *                 priority:
-   *                   type: integer
-   *                 session_id:
-   *                   type: string
-   *                   format: uuid
-   *                 webhook_url:
-   *                   type: string
-   *                   format: uri
-   *             example:
-   *               success: true
-   *               message: "Task created successfully"
-   *               task_id: "550e8400-e29b-41d4-a716-446655440001"
-   *               status: "pending"
-   *               priority: 5
-   *               session_id: "550e8400-e29b-41d4-a716-446655440000"
-   *               webhook_url: "https://your-server.com/webhook"
    *       '400':
    *         description: Invalid request
    *         content:
@@ -125,7 +83,7 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
    *               success: false
    *               error: "Streaming is not yet implemented"
    */
-  // POST /api/claude - 单个请求（支持同步和异步）
+  // POST /api/messages - 同步执行
   router.post('/', async (req, res) => {
     const {
       prompt,
@@ -139,9 +97,6 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
       agent,
       mcp_config,
       stream,
-      async: isAsync,
-      webhook_url,
-      priority,
     } = req.body;
 
     // 验证请求
@@ -181,52 +136,7 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
       }
     }
 
-    // 异步执行模式
-    if (isAsync) {
-      if (!taskQueue) {
-        return res.status(501).json({
-          success: false,
-          error: 'Async execution is not available (task queue not initialized)',
-        });
-      }
-
-      try {
-        // 创建异步任务
-        const task = await taskQueue.addTask({
-          prompt,
-          project_path: projectPath,
-          model,
-          priority: priority || 5, // 默认优先级 5
-          metadata: {
-            webhook_url: webhook_url || config.webhook?.defaultUrl,
-            session_id: sessionId,
-            system_prompt,
-            max_budget_usd,
-            allowed_tools,
-            disallowed_tools,
-            agent,
-            mcp_config,
-          },
-        });
-
-        return res.status(202).json({
-          success: true,
-          message: 'Task created successfully',
-          task_id: task.id,
-          status: task.status,
-          priority: task.priority,
-          session_id: sessionId, // 返回 session_id
-          webhook_url: task.metadata.webhook_url,
-        });
-      } catch (error) {
-        return res.status(500).json({
-          success: false,
-          error: error.message,
-        });
-      }
-    }
-
-    // 同步执行模式（默认）
+    // 同步执行
     const result = await claudeExecutor.execute({
       prompt,
       projectPath,
@@ -253,14 +163,14 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
 
   /**
    * @swagger
-   * /api/claude/batch:
+   * /api/message/batches:
    *   post:
-   *     summary: Execute multiple Claude CLI requests in batch
+   *     summary: Execute multiple Claude requests in batch
    *     description: |
    *       Send multiple prompts to Claude CLI and get all responses.
    *       All requests are executed concurrently for better performance.
    *       Returns individual results plus summary statistics.
-   *     tags: [Claude]
+   *     tags: [Messages]
    *     requestBody:
    *       required: true
    *       content:
@@ -337,8 +247,8 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
    *               success: false
    *               error: "Failed to execute batch requests"
    */
-  // POST /api/claude/batch - 批量处理
-  router.post('/batch', async (req, res) => {
+  // POST /api/message/batches - 批量处理
+  router.post('/batches', async (req, res) => {
     const validation = Validators.validateBatchRequest(req.body);
     if (!validation.valid) {
       return res.status(400).json({
@@ -390,4 +300,215 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
   return router;
 }
 
-module.exports = createClaudeRoutes;
+/**
+ * Async Claude API 路由
+ */
+function createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager = null) {
+  const router = require('express').Router();
+
+  /**
+   * @swagger
+   * /api/async/messages:
+   *   post:
+   *     summary: Send async message to Claude
+   *     description: |
+   *       Send a prompt to Claude CLI for asynchronous execution.
+   *       The request is added to a task queue and processed in the background.
+   *       Supports priority-based scheduling and webhook callbacks.
+   *     tags: [Async Messages]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             $ref: '#/components/schemas/ClaudeRequest'
+   *           examples:
+   *             simple:
+   *               summary: Simple async request
+   *               value:
+   *                 prompt: "Generate a comprehensive report"
+   *                 priority: 5
+   *             highPriority:
+   *               summary: High priority async task
+   *               value:
+   *                 prompt: "Analyze entire codebase"
+   *                 priority: 8
+   *             withWebhook:
+   *               summary: Async with webhook callback
+   *               value:
+   *                 prompt: "Process large dataset"
+   *                 priority: 7
+   *                 webhook_url: "https://your-server.com/webhook"
+   *             advanced:
+   *               summary: Async with all options
+   *               value:
+   *                 prompt: "Generate documentation"
+   *                 project_path: "/path/to/project"
+   *                 model: "claude-sonnet-4-5"
+   *                 agent: "documentation-writer"
+   *                 priority: 9
+   *                 webhook_url: "https://your-server.com/webhook"
+   *     responses:
+   *       '202':
+   *         description: Async task created successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Task created successfully"
+   *                 task_id:
+   *                   type: string
+   *                   format: uuid
+   *                 status:
+   *                   type: string
+   *                   enum: [pending, processing, completed, failed, cancelled]
+   *                   example: "pending"
+   *                 priority:
+   *                   type: integer
+   *                   example: 5
+   *                   minimum: 1
+   *                   maximum: 10
+   *                 session_id:
+   *                   type: string
+   *                   format: uuid
+   *                   example: "550e8400-e29b-41d4-a716-446655440000"
+   *                 webhook_url:
+   *                   type: string
+   *                   format: uri
+   *                   example: "https://your-server.com/webhook"
+   *             example:
+   *               success: true
+   *               message: "Task created successfully"
+   *               task_id: "550e8400-e29b-41d4-a716-446655440001"
+   *               status: "pending"
+   *               priority: 5
+   *               session_id: "550e8400-e29b-41d4-a716-446655440000"
+   *               webhook_url: "https://your-server.com/webhook"
+   *       '400':
+   *         description: Invalid request
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "prompt is required"
+   *       '501':
+   *         description: Async execution not available
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Async execution is not available (task queue not initialized)"
+   *       '500':
+   *         description: Server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Failed to create async task"
+   */
+  // POST /api/async/messages - 异步执行
+  router.post('/', async (req, res) => {
+    const {
+      prompt,
+      project_path,
+      model,
+      session_id,
+      system_prompt,
+      max_budget_usd,
+      allowed_tools,
+      disallowed_tools,
+      agent,
+      mcp_config,
+      webhook_url,
+      priority,
+    } = req.body;
+
+    // 验证请求
+    const validation = Validators.validateClaudeRequest(req.body);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: validation.error,
+      });
+    }
+
+    const projectPath = project_path || config.defaultProjectPath;
+
+    // 检查任务队列是否可用
+    if (!taskQueue) {
+      return res.status(501).json({
+        success: false,
+        error: 'Async execution is not available (task queue not initialized)',
+      });
+    }
+
+    // 自动创建会话（如果没有 session_id）
+    let sessionId = session_id;
+    if (!sessionId && sessionManager) {
+      try {
+        const session = await sessionManager.createSession({
+          project_path: projectPath,
+          model: model || config.defaultModel,
+          metadata: {
+            auto_created: true,
+          },
+        });
+        sessionId = session.id;
+      } catch (error) {
+        // 如果创建会话失败，继续执行但不使用会话
+        console.error('Failed to auto-create session:', error.message);
+      }
+    }
+
+    try {
+      // 创建异步任务
+      const task = await taskQueue.addTask({
+        prompt,
+        project_path: projectPath,
+        model,
+        priority: priority || 5, // 默认优先级 5
+        metadata: {
+          webhook_url: webhook_url || config.webhook?.defaultUrl,
+          session_id: sessionId,
+          system_prompt,
+          max_budget_usd,
+          allowed_tools,
+          disallowed_tools,
+          agent,
+          mcp_config,
+        },
+      });
+
+      return res.status(202).json({
+        success: true,
+        message: 'Task created successfully',
+        task_id: task.id,
+        status: task.status,
+        priority: task.priority,
+        session_id: sessionId,
+        webhook_url: task.metadata.webhook_url,
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  });
+
+  return router;
+}
+
+module.exports = { createClaudeRoutes, createAsyncClaudeRoutes };

@@ -185,7 +185,7 @@ async function main() {
   // 加载路由
   const createHealthRoute = require('./src/routes/health');
   const createConfigRoute = require('./src/routes/config');
-  const createClaudeRoutes = require('./src/routes/claude');
+  const { createClaudeRoutes, createAsyncClaudeRoutes } = require('./src/routes/claude');
   const createSessionRoutes = require('./src/routes/sessions');
   const createStatisticsRoutes = require('./src/routes/statistics');
   const createTaskRoutes = require('./src/routes/tasks');
@@ -204,7 +204,10 @@ async function main() {
   // 挂载路由
   app.get('/health', createHealthRoute());
   app.get('/api/config', createConfigRoute(configPath));
-  app.use('/api/claude', createClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager));
+  // Synchronous messages and batch processing
+  app.use('/api/messages', createClaudeRoutes(claudeExecutor, config, null, sessionManager));
+  // Asynchronous message processing
+  app.use('/api/async/messages', createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager));
   app.use('/api/sessions', createSessionRoutes(sessionManager));
   app.use('/api/statistics', createStatisticsRoutes(statisticsCollector));
   app.use('/api/tasks', createTaskRoutes(taskQueue));
