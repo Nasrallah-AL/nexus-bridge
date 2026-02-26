@@ -163,16 +163,6 @@ class ClaudeExecutor {
       const env = { ...process.env };
       env.PATH = `${this.config.nvmBin}:${env.PATH}`;
 
-      // 根据配置决定是否使用 IS_SANDBOX=1 环境变量
-      // 这是为了绕过 Claude CLI 在 root 用户下对 --dangerously-skip-permissions 的限制
-      if (this.config.enableRootCompatibility !== false) {
-        env.IS_SANDBOX = '1';
-        const isRunningAsRoot = process.getuid() === 0;
-        if (isRunningAsRoot) {
-          this.logger.warn('Root compatibility mode enabled - using IS_SANDBOX=1 to bypass Claude CLI root restrictions');
-        }
-      }
-
       const child = spawn(this.config.claudePath, args, {
         cwd: projectPath,
         env,
@@ -282,8 +272,11 @@ class ClaudeExecutor {
       args.push('--mcp-config', mcpConfigPath);
     }
 
-    // 跳过权限检查
-    args.push('--dangerously-skip-permissions');
+    // 根据配置决定是否跳过权限检查（默认不跳过）
+    if (this.config.allowDangerouslySkipPermissions === true) {
+      args.push('--dangerously-skip-permissions');
+      this.logger.warn('Dangerously skipping permissions - use with caution');
+    }
 
     return args;
   }

@@ -47,7 +47,7 @@ const defaultConfig = {
     configPath: null
   },
   logLevel: 'info',
-  enableRootCompatibility: true
+  allowDangerouslySkipPermissions: false
 };
 
 // 确保配置目录存在并加载配置
@@ -445,20 +445,7 @@ async function configureSettings() {
   // 更新基本配置
   Object.assign(config, basicAnswers);
 
-  // 第二部分：root 兼容配置
-  const { enableRootCompatibility } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'enableRootCompatibility',
-      message: '启用 root 兼容模式? (绕过 Claude CLI 的 root 限制)',
-      default: config.enableRootCompatibility !== false,
-    },
-  ]);
-
-  // 更新 root 兼容配置
-  config.enableRootCompatibility = enableRootCompatibility;
-
-  // 第三部分：Webhook 配置
+  // 第二部分：Webhook 配置
   const { enableWebhook } = await inquirer.prompt([
     {
       type: 'confirm',
@@ -557,7 +544,7 @@ async function configureSettings() {
   console.log('');
   console.log(chalk.bold.cyan('配置摘要:'));
   console.log(`  ${chalk.white('端口:')} ${config.port}`);
-  console.log(`  ${chalk.white('Root 兼容:')} ${config.enableRootCompatibility !== false ? chalk.green('已启用') : chalk.gray('未启用')}`);
+  console.log(`  ${chalk.white('跳过权限检查:')} ${config.allowDangerouslySkipPermissions ? chalk.red('已启用') : chalk.gray('未启用（默认）')}`);
   console.log(`  ${chalk.white('Webhook:')} ${config.webhook.enabled ? chalk.green('已启用') : chalk.gray('未启用')}`);
   if (config.webhook.enabled && config.webhook.defaultUrl) {
     console.log(`  ${chalk.white('URL:')} ${config.webhook.defaultUrl}`);
