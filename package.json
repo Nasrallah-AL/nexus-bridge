@@ -21,6 +21,8 @@
     "lowdb": "^4.0.1",
     "node-cron": "^4.2.1",
     "ora": "^5.4.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "winston": "^3.19.0"
   }
 }
