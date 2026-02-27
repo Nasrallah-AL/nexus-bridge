@@ -829,9 +829,18 @@ async function visualConfigEditor() {
 }
 
 function formatValue(value, type) {
+  // 先检查是否存在
   if (value === undefined || value === null) return '未设置';
+
+  // 类型特定的格式化
   if (type === 'boolean') return value ? '是' : '否';
-  return value.toString();
+
+  // 其他类型安全转换
+  try {
+    return String(value);
+  } catch (e) {
+    return '未设置';
+  }
 }
 
 function getNestedValue(obj, key) {
