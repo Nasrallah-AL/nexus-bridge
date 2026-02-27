@@ -686,6 +686,22 @@ async function configureSettings() {
     }
   }
 
+  // Swagger 文档配置
+  const { enableSwaggerDocs } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'enableSwaggerDocs',
+      message: '启用 Swagger API 文档 (/api-docs)?',
+      default: config.security?.swaggerDocs?.enabled !== false,
+    },
+  ]);
+
+  // Initialize swaggerDocs config if not exists
+  if (!config.security.swaggerDocs) {
+    config.security.swaggerDocs = { enabled: true };
+  }
+  config.security.swaggerDocs.enabled = enableSwaggerDocs;
+
   // 保存配置
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
@@ -715,6 +731,7 @@ async function configureSettings() {
   } else {
     console.log(`  ${chalk.white('API 认证:')} ${chalk.gray('未启用')}`);
   }
+  console.log(`  ${chalk.white('Swagger 文档:')} ${config.security?.swaggerDocs?.enabled !== false ? chalk.green('已启用') : chalk.red('已禁用')}`);
   console.log('');
 }
 
