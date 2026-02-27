@@ -26,6 +26,9 @@ const defaultConfig = {
       enabled: false,
       secretKey: null,
       bypassHealthCheck: true
+    },
+    swaggerDocs: {
+      enabled: true
     }
   }
 };
@@ -81,6 +84,16 @@ async function loadConfig() {
         console.log(`✅ 已自动生成 SECRET_KEY (迁移)`);
         const apiKey = deriveApiKey(config.security.auth.secretKey);
         console.log(`📝 API Key: ${apiKey}`);
+      } catch (err) {
+        console.error(`❌ 更新配置失败 ${configPath}:`, err.message);
+      }
+    }
+    // Migrate swaggerDocs config if not present
+    if (config.security && !config.security.swaggerDocs) {
+      config.security.swaggerDocs = { enabled: true };
+      try {
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        console.log(`✅ 已添加 swaggerDocs 配置 (默认启用)`);
       } catch (err) {
         console.error(`❌ 更新配置失败 ${configPath}:`, err.message);
       }
@@ -231,28 +244,34 @@ async function main() {
   app.use('/api/tasks', createTaskRoutes(taskQueue));
 
   // Swagger API Documentation
-  const swaggerUi = require('swagger-ui-express');
-  const swaggerSpec = require('./swagger-config');
+  if (config.security?.swaggerDocs?.enabled !== false) {
+    const swaggerUi = require('swagger-ui-express');
+    const swaggerSpec = require('./swagger-config');
 
-  // Serve Swagger UI
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-    customSiteTitle: 'Claude Code Server API Documentation',
-    customCss: '.swagger-ui .topbar { display: none }',
-    swaggerOptions: {
-      persistAuthorization: true,
-      displayRequestDuration: true,
-      docExpansion: 'list',
-      filter: true,
-      showRequestHeaders: true,
-      tryItOutEnabled: true
-    }
-  }));
+    // Serve Swagger UI
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+      customSiteTitle: 'Claude Code Server API Documentation',
+      customCss: '.swagger-ui .topbar { display: none }',
+      swaggerOptions: {
+        persistAuthorization: true,
+        displayRequestDuration: true,
+        docExpansion: 'list',
+        filter: true,
+        showRequestHeaders: true,
+        tryItOutEnabled: true
+      }
+    }));
 
-  // Serve raw OpenAPI JSON spec
-  app.get('/api-docs.json', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.send(swaggerSpec);
-  });
+    // Serve raw OpenAPI JSON spec
+    app.get('/api-docs.json', (req, res) => {
+      res.setHeader('Content-Type', 'application/json');
+      res.send(swaggerSpec);
+    });
+
+    logger.info('Swagger Documentation: enabled at /api-docs');
+  } else {
+    logger.info('Swagger Documentation: disabled');
+  }
 
   // 配置热重载
   let configWatcher = null;
@@ -284,6 +303,10 @@ async function main() {
       }
       if (newConfig.logLevel !== config.logLevel) {
         configChanges.push(`logLevel: ${config.logLevel} → ${newConfig.logLevel}`);
+      }
+      if (newConfig.security?.swaggerDocs?.enabled !== config.security?.swaggerDocs?.enabled) {
+        configChanges.push(`security.swaggerDocs.enabled: ${config.security?.swaggerDocs?.enabled} → ${newConfig.security?.swaggerDocs?.enabled}`);
+        configChanges.push(`注意: Swagger 路由变更需要重启服务器生效`);
       }
 
       // 更新配置对象（保留引用）
