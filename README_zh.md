@@ -166,9 +166,42 @@ Claude Code Server 配有功能完整的 TUI 管理工具：
 - **📊 查看统计** - 查看使用统计摘要
 - **📋 任务列表** - 查看任务、调整优先级
 - **📋 查看日志** - 格式化日志显示、搜索
-- **📖 查看接口文档** - 显示 API 文档
-- **⚙ 配置设置** - 修改配置（支持热重载）
+- **📖 查看接口文档** - 在浏览器中打开交互式 Swagger UI
+- **📝 配置设置** - 可视化配置编辑器，分类管理所有选项
 - **🧪 测试 API** - 快速测试 API 接口
+
+### 可视化配置编辑器
+
+TUI 包含一个可视化配置编辑器，将所有设置按类别组织：
+
+**📦 基本配置**
+- 服务端口、监听地址
+- Claude CLI 路径、NVM bin 路径
+- 默认项目路径
+- 会话保留天数
+- 日志级别、最大预算
+
+**🔄 Webhook 配置**
+- 启用/禁用 Webhook
+- 默认 Webhook URL
+- 超时和重试设置
+
+**📋 任务队列配置**
+- 队列并发数（1-10）
+- 任务超时设置
+
+**⚡ 速率限制配置**
+- 启用/禁用速率限制
+- 时间窗口和最大请求数
+
+**📊 统计配置**
+- 启用/禁用统计收集
+- 收集间隔
+
+**🔐 安全配置**
+- **启用 API 认证** - 为所有接口启用 API Key 认证
+- **健康检查绕过认证** - 允许健康检查接口无需认证（推荐：启用）
+- **跳过权限检查** - 调用 Claude CLI 时添加 `--dangerously-skip-permissions` 标志（⚠️ 安全风险，生产环境建议关闭）
 
 ### 启动 TUI
 
@@ -207,6 +240,10 @@ node cli.js
 | `mcp.enabled` | boolean | false | 是否启用 MCP |
 | `mcp.configPath` | string | null | MCP 配置文件路径 |
 | `logLevel` | string | "info" | 日志级别 |
+| `security.auth.enabled` | boolean | false | 启用 API 认证 |
+| `security.auth.secretKey` | string | null | API 认证密钥 |
+| `security.auth.bypassHealthCheck` | boolean | true | 健康检查是否绕过认证 |
+| `allowDangerouslySkipPermissions` | boolean | false | 跳过 CLI 权限检查（⚠️ 安全风险） |
 
 ### 配置文件位置
 

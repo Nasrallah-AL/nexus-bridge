@@ -166,9 +166,42 @@ Claude Code Server comes with a full-featured TUI management tool:
 - **📊 View Statistics** - View usage statistics summary
 - **📋 Task List** - View tasks, adjust priorities
 - **📋 View Logs** - Formatted log display with search
-- **📖 View API Documentation** - Display API documentation
-- **⚙ Configuration Settings** - Modify configuration (supports hot reload)
+- **📖 View API Documentation** - Interactive Swagger UI in browser
+- **📝 Configuration Settings** - Visual configuration editor with categorized options
 - **🧪 Test API** - Quick test of API endpoints
+
+### Visual Configuration Editor
+
+The TUI includes a visual configuration editor that organizes all settings into categories:
+
+**📦 Basic Configuration**
+- Server port, host address
+- Claude CLI path, NVM bin path
+- Default project path
+- Session retention days
+- Log level, max budget
+
+**🔄 Webhook Configuration**
+- Enable/disable webhooks
+- Default webhook URL
+- Timeout and retry settings
+
+**📋 Task Queue Configuration**
+- Queue concurrency (1-10)
+- Task timeout settings
+
+**⚡ Rate Limiting Configuration**
+- Enable/disable rate limiting
+- Time window and max requests
+
+**📊 Statistics Configuration**
+- Enable/disable statistics collection
+- Collection interval
+
+**🔐 Security Configuration**
+- **Enable API Authentication** - Enable API key authentication for all endpoints
+- **Bypass Health Check Authentication** - Allow health check endpoint without authentication (recommended: true)
+- **Skip Permissions Check** - Add `--dangerously-skip-permissions` flag when calling Claude CLI (⚠️ Security risk, keep disabled in production)
 
 ### Launch TUI
 
@@ -207,6 +240,10 @@ node cli.js
 | `mcp.enabled` | boolean | false | Enable MCP |
 | `mcp.configPath` | string | null | MCP config file path |
 | `logLevel` | string | "info" | Log level |
+| `security.auth.enabled` | boolean | false | Enable API authentication |
+| `security.auth.secretKey` | string | null | API authentication secret key |
+| `security.auth.bypassHealthCheck` | boolean | true | Bypass auth for health check endpoint |
+| `allowDangerouslySkipPermissions` | boolean | false | Skip CLI permissions check (⚠️ security risk) |
 
 ### Configuration File Location
 

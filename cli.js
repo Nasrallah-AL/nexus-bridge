@@ -722,6 +722,15 @@ async function visualConfigEditor() {
   console.log(chalk.bold.cyan('╚═══════════════════════════════════════════════════════════════╝'));
   console.log('');
 
+  // 显示 API Key（如果启用认证）
+  if (config.security?.auth?.enabled && config.security.auth.secretKey) {
+    const apiKey = deriveApiKey(config.security.auth.secretKey);
+    console.log(chalk.bold.cyan('🔐 API 认证信息:'));
+    console.log(`  ${chalk.white('API Key:')} ${chalk.bold.green(apiKey)}`);
+    console.log(`  ${chalk.gray('提示: 使用此 Key 在请求头中添加 Authorization: Bearer <API-Key>')}`);
+    console.log('');
+  }
+
   // Flatten all items for selection
   const allItems = [];
   configSections.forEach(section => {
