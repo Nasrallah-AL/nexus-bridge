@@ -31,3 +31,4 @@ config.json # Local configuration, should not be committed
 .DS_Store
 .Trash
 Thumbs.db
+docs/plans/
