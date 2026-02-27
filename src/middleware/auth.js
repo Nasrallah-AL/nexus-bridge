@@ -9,6 +9,7 @@ const { deriveApiKey } = require('../utils/keyGenerator');
  * - API key format validation (ccs_ak_<base64url>)
  * - Configurable health check bypass
  * - Can be disabled via config.security.auth.enabled
+ * - Audit logging for auth failures and successful API calls
  *
  * @param {Object} config - Server configuration object
  * @param {Object} config.security - Security configuration
@@ -16,9 +17,10 @@ const { deriveApiKey } = require('../utils/keyGenerator');
  * @param {boolean} config.security.auth.enabled - Whether authentication is enabled
  * @param {string} config.security.auth.secretKey - Secret key for deriving API keys
  * @param {boolean} config.security.auth.bypassHealthCheck - Whether to bypass auth for /health endpoint
+ * @param {Object} auditLogger - Audit logger service instance (optional)
  * @returns {Function} Express middleware function
  */
-function createAuthMiddleware(config) {
+function createAuthMiddleware(config, auditLogger = null) {
   return (req, res, next) => {
     // Check if authentication is enabled
     if (!config.security?.auth?.enabled) {
@@ -42,6 +44,9 @@ function createAuthMiddleware(config) {
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
+      if (auditLogger) {
+        auditLogger.logAuthFailure(req, 'missing_header');
+      }
       res.setHeader('WWW-Authenticate', 'Bearer');
       return res.status(401).json({
         success: false,
@@ -51,6 +56,9 @@ function createAuthMiddleware(config) {
     }
 
     if (!authHeader.startsWith('Bearer ')) {
+      if (auditLogger) {
+        auditLogger.logAuthFailure(req, 'invalid_format');
+      }
       res.setHeader('WWW-Authenticate', 'Bearer');
       return res.status(401).json({
         success: false,
@@ -64,6 +72,9 @@ function createAuthMiddleware(config) {
 
     // Validate API key format (ccs_ak_<base64url>)
     if (!clientApiKey.startsWith('ccs_ak_')) {
+      if (auditLogger) {
+        auditLogger.logAuthFailure(req, 'invalid_format');
+      }
       res.setHeader('WWW-Authenticate', 'Bearer');
       return res.status(401).json({
         success: false,
@@ -83,6 +94,9 @@ function createAuthMiddleware(config) {
 
       // Ensure buffers are same length before comparison
       if (clientKeyBuffer.length !== expectedKeyBuffer.length) {
+        if (auditLogger) {
+          auditLogger.logAuthFailure(req, 'invalid_api_key');
+        }
         res.setHeader('WWW-Authenticate', 'Bearer');
         return res.status(401).json({
           success: false,
@@ -92,6 +106,9 @@ function createAuthMiddleware(config) {
 
       // Constant-time comparison
       if (!crypto.timingSafeEqual(clientKeyBuffer, expectedKeyBuffer)) {
+        if (auditLogger) {
+          auditLogger.logAuthFailure(req, 'invalid_api_key');
+        }
         res.setHeader('WWW-Authenticate', 'Bearer');
         return res.status(401).json({
           success: false,
@@ -100,6 +117,9 @@ function createAuthMiddleware(config) {
       }
     } catch (error) {
       // If comparison fails for any reason, reject the request
+      if (auditLogger) {
+        auditLogger.logAuthFailure(req, 'invalid_api_key');
+      }
       res.setHeader('WWW-Authenticate', 'Bearer');
       return res.status(401).json({
         success: false,
@@ -107,7 +127,11 @@ function createAuthMiddleware(config) {
       });
     }
 
-    // Authentication successful
+    // Authentication successful - log API usage
+    if (auditLogger) {
+      auditLogger.logApiUsage(req);
+    }
+
     next();
   };
 }

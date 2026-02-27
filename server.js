@@ -154,6 +154,7 @@ async function main() {
     './src/services/statisticsCollector',
     './src/services/taskQueue',
     './src/services/webhookNotifier',
+    './src/services/auditLogger',
     './src/storage/sessionStore',
     './src/storage/taskStore',
     './src/storage/statsStore',
@@ -179,6 +180,7 @@ async function main() {
   const StatisticsCollector = require('./src/services/statisticsCollector');
   const TaskQueue = require('./src/services/taskQueue');
   const WebhookNotifier = require('./src/services/webhookNotifier');
+  const AuditLogger = require('./src/services/auditLogger');
 
   const claudeExecutor = new ClaudeExecutor(config, sessionStore, statsStore);
   const sessionManager = new SessionManager(config, sessionStore, claudeExecutor);
@@ -186,6 +188,7 @@ async function main() {
   const statisticsCollector = new StatisticsCollector(config, statsStore);
   const webhookNotifier = new WebhookNotifier(config);
   const taskQueue = new TaskQueue(config, taskStore, claudeExecutor, webhookNotifier);
+  const auditLogger = new AuditLogger(config, statsStore);
 
   // 加载路由
   const createHealthRoute = require('./src/routes/health');
@@ -205,7 +208,7 @@ async function main() {
   app.use(express.json());
 
   // Create authentication middleware
-  const authMiddleware = createAuthMiddleware(config);
+  const authMiddleware = createAuthMiddleware(config, auditLogger);
 
   // Apply authentication to all /api/* routes
   // Must come after body parser, before route mounting
