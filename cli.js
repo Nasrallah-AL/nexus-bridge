@@ -888,97 +888,57 @@ async function openInEditor() {
 
 // 显示 API 文档
 async function showApiDocs() {
+  const docsUrl = `http://localhost:${config.port}/api-docs`;
+
   console.log('');
   console.log(chalk.bold.cyan('╔════════════════════════════════════════════════════════════════╗'));
   console.log(chalk.bold.cyan('║           Claude Code Server - 接口文档                       ║'));
   console.log(chalk.bold.cyan('╚════════════════════════════════════════════════════════════════╝'));
   console.log('');
 
-  console.log(chalk.bold.yellow('基础 URL: ') + chalk.white(`http://localhost:${config.port}`));
+  console.log(chalk.bold('📖 交互式 API 文档 (Swagger UI)'));
+  console.log('');
+  console.log(chalk.white('请在浏览器中访问:'));
+  console.log('');
+  console.log(chalk.bold.cyan(`  ${docsUrl}`));
+  console.log('');
+  console.log(chalk.gray('Swagger UI 提供:'));
+  console.log(chalk.gray('  • 完整的 API 端点列表和说明'));
+  console.log(chalk.gray('  • 在线测试 API 功能'));
+  console.log(chalk.gray('  • 请求/响应示例'));
+  console.log(chalk.gray('  • 认证配置说明'));
   console.log('');
 
-  // 1. 健康检查
-  console.log(chalk.bold.green('1. 健康检查'));
-  console.log(chalk.gray('─'.repeat(60)));
-  console.log(chalk.cyan('GET /health'));
-  console.log('');
-  console.log(chalk.white('描述: ') + '检查服务是否正常运行');
-  console.log(chalk.white('响应:'));
-  console.log('  {');
-  console.log('    "status": "ok",');
-  console.log('    "uptime": 123.45');
-  console.log('  }');
-  console.log('');
+  const { openBrowser } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'openBrowser',
+      message: '是否在浏览器中打开文档?',
+      default: false,
+    },
+  ]);
 
-  // 2. Claude API
-  console.log(chalk.bold.green('2. Claude AI 对话'));
-  console.log(chalk.gray('─'.repeat(60)));
-  console.log(chalk.cyan('POST /api/messages (同步)'));
-  console.log('');
-  console.log(chalk.white('描述: ') + '发送提示给 Claude AI 并获取回复');
-  console.log('');
-  console.log(chalk.white('请求体:'));
-  console.log('  {');
-  console.log(`    "prompt": "你的问题或任务",${chalk.gray('    // 必填')}`);
-  console.log(`    "project_path": "/path/to/project"${chalk.gray(' // 可填，默认: ' + config.defaultProjectPath + ')')}`);
-  console.log('  }');
-  console.log('');
-  console.log(chalk.white('响应 (成功):'));
-  console.log('  {');
-  console.log('    "success": true,');
-  console.log('    "result": "Claude 的回复内容",');
-  console.log('    "duration_ms": 1953,');
-  console.log('    "cost_usd": 0.097502,');
-  console.log('    "session_id": "xxx-xxx-xxx"');
-  console.log('  }');
-  console.log('');
-  console.log(chalk.white('响应 (失败):'));
-  console.log('  {');
-  console.log('    "success": false,');
-  console.log('    "error": "错误信息",');
-  console.log('    "duration_ms": 100');
-  console.log('  }');
-  console.log('');
+  if (openBrowser) {
+    const { exec } = require('child_process');
+    const platform = process.platform;
 
-  // 3. 配置信息
-  console.log(chalk.bold.green('3. 配置信息'));
-  console.log(chalk.gray('─'.repeat(60)));
-  console.log(chalk.cyan('GET /api/config'));
-  console.log('');
-  console.log(chalk.white('描述: ') + '获取服务配置信息');
-  console.log(chalk.white('响应:'));
-  console.log('  {');
-  console.log('    "port": 5546,');
-  console.log('    "defaultProjectPath": "/home/junhang/workspace",');
-  console.log('    "version": "1.0.0"');
-  console.log('  }');
-  console.log('');
+    let command;
+    if (platform === 'darwin') {
+      command = `open "${docsUrl}"`;
+    } else if (platform === 'win32') {
+      command = `start "" "${docsUrl}"`;
+    } else {
+      command = `xdg-open "${docsUrl}"`;
+    }
 
-  // 4. 使用示例
-  console.log(chalk.bold.green('4. 使用示例'));
-  console.log(chalk.gray('─'.repeat(60)));
-  console.log(chalk.cyan('curl 示例:'));
-  console.log('');
-  console.log(chalk.gray('# 健康检查'));
-  console.log(chalk.white(`curl http://localhost:${config.port}/health`));
-  console.log('');
-  console.log(chalk.gray('# 调用 Claude (同步)'));
-  console.log(chalk.white(`curl -X POST http://localhost:${config.port}/api/messages \\`));
-  console.log(chalk.white('  -H "Content-Type: application/json" \\'));
-  console.log(chalk.white('  -d \'{"prompt": "解释一下什么是 HTTP"}\''));
-  console.log('');
-  console.log(chalk.cyan('Node.js 示例:'));
-  console.log('');
-  console.log('const response = await fetch(`http://localhost:' + config.port + '/api/messages`, {');
-  console.log('  method: "POST",');
-  console.log('  headers: { "Content-Type": "application/json" },');
-  console.log('  body: JSON.stringify({ prompt: "你的问题" })');
-  console.log('});');
-  console.log('const data = await response.json();');
-  console.log('console.log(data.result);');
-  console.log('');
-
-  console.log(chalk.gray('═'.repeat(60)));
+    exec(command, (error) => {
+      if (error) {
+        console.log(chalk.yellow('⚠ 无法自动打开浏览器，请手动访问: ' + docsUrl));
+      } else {
+        console.log(chalk.green('✓ 已在浏览器中打开文档'));
+      }
+    });
+  }
   console.log('');
 }
 
