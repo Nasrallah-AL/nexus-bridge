@@ -12,6 +12,40 @@ const { generateSecretKey, deriveApiKey } = require('./src/utils/keyGenerator');
 // 配置目录和文件
 const configDir = path.join(process.env.HOME || os.homedir(), '.claude-code-server');
 const configPath = path.join(configDir, 'config.json');
+
+/**
+ * 构建带有认证的 fetch headers
+ * 如果启用了 API 认证，自动添加 Authorization header
+ */
+function getAuthHeaders(config) {
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+
+  if (config.security?.auth?.enabled && config.security.auth.secretKey) {
+    const apiKey = deriveApiKey(config.security.auth.secretKey);
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+
+  return headers;
+}
+
+/**
+ * 认证的 fetch 封装
+ */
+async function authenticatedFetch(url, options = {}, config) {
+  const headers = getAuthHeaders(config);
+
+  const fetchOptions = {
+    ...options,
+    headers: {
+      ...headers,
+      ...options.headers,
+    },
+  };
+
+  return fetch(url, fetchOptions);
+}
 const defaultConfig = {
   port: 5546,
   host: '0.0.0.0',
@@ -1084,7 +1118,7 @@ async function testApi() {
   const spinner = ora('测试 API...').start();
 
   try {
-    const response = await fetch(`http://localhost:${config.port}/health`);
+    const response = await authenticatedFetch(`http://localhost:${config.port}/health`, {}, config);
     const data = await response.json();
 
     spinner.succeed(chalk.green('健康检查通过'));
@@ -1092,11 +1126,10 @@ async function testApi() {
 
     // 测试 Claude Code API
     const spinner2 = ora('测试 Claude Code API...').start();
-    const claudeResponse = await fetch(`http://localhost:${config.port}/api/messages`, {
+    const claudeResponse = await authenticatedFetch(`http://localhost:${config.port}/api/messages`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: 'Say hello' }),
-    });
+    }, config);
     const claudeData = await claudeResponse.json();
 
     if (claudeData.success) {
@@ -1126,7 +1159,7 @@ async function listSessions() {
   const spinner = ora('获取会话列表...').start();
 
   try {
-    const response = await fetch(`http://localhost:${config.port}/api/sessions`);
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/sessions`, {}, config);
     const data = await response.json();
 
     spinner.stop();
@@ -1165,7 +1198,7 @@ async function viewSessionDetails() {
   const spinner = ora('获取会话列表...').start();
 
   try {
-    const response = await fetch(`http://localhost:${config.port}/api/sessions`);
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/sessions`, {}, config);
     const data = await response.json();
 
     spinner.stop();
@@ -1190,7 +1223,7 @@ async function viewSessionDetails() {
     ]);
 
     const spinner2 = ora('获取会话详情...').start();
-    const detailResponse = await fetch(`http://localhost:${config.port}/api/sessions/${sessionId}`);
+    const detailResponse = await authenticatedFetch(`http://localhost:${config.port}/api/sessions/${sessionId}`, {}, config);
     const detailData = await detailResponse.json();
 
     spinner2.stop();
@@ -1232,7 +1265,7 @@ async function deleteSession() {
   const spinner = ora('获取会话列表...').start();
 
   try {
-    const response = await fetch(`http://localhost:${config.port}/api/sessions`);
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/sessions`, {}, config);
     const data = await response.json();
 
     spinner.stop();
@@ -1271,9 +1304,9 @@ async function deleteSession() {
     }
 
     const spinner2 = ora('删除会话...').start();
-    const deleteResponse = await fetch(`http://localhost:${config.port}/api/sessions/${sessionId}`, {
+    const deleteResponse = await authenticatedFetch(`http://localhost:${config.port}/api/sessions/${sessionId}`, {
       method: 'DELETE',
-    });
+    }, config);
     const deleteData = await deleteResponse.json();
 
     spinner2.stop();
@@ -1337,7 +1370,7 @@ async function viewStatisticsSummary() {
   const spinner = ora('获取统计数据...').start();
 
   try {
-    const response = await fetch(`http://localhost:${config.port}/api/statistics/summary`);
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/statistics/summary`, {}, config);
     const data = await response.json();
 
     spinner.stop();
@@ -1375,7 +1408,7 @@ async function viewDailyStatistics() {
   const spinner = ora('获取每日统计...').start();
 
   try {
-    const response = await fetch(`http://localhost:${config.port}/api/statistics/daily?limit=7`);
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/statistics/daily?limit=7`, {}, config);
     const data = await response.json();
 
     spinner.stop();
@@ -1443,7 +1476,7 @@ async function listTasks() {
   const spinner = ora('获取任务列表...').start();
 
   try {
-    const response = await fetch(`http://localhost:${config.port}/api/tasks`);
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/tasks`, {}, config);
     const data = await response.json();
 
     spinner.stop();
@@ -1494,7 +1527,7 @@ async function viewQueueStatus() {
   const spinner = ora('获取队列状态...').start();
 
   try {
-    const response = await fetch(`http://localhost:${config.port}/api/tasks/queue/status`);
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/tasks/queue/status`, {}, config);
     const data = await response.json();
 
     spinner.stop();
@@ -1537,7 +1570,7 @@ async function changeTaskPriority() {
 
   try {
     // 获取 pending 和 processing 状态的任务
-    const response = await fetch(`http://localhost:${config.port}/api/tasks?status=pending`);
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/tasks?status=pending`, {}, config);
     const data = await response.json();
 
     spinner.stop();
@@ -1585,11 +1618,10 @@ async function changeTaskPriority() {
 
     // 更新优先级
     const updateSpinner = ora('更新优先级...').start();
-    const updateResponse = await fetch(`http://localhost:${config.port}/api/tasks/${taskId}/priority`, {
+    const updateResponse = await authenticatedFetch(`http://localhost:${config.port}/api/tasks/${taskId}/priority`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ priority }),
-    });
+    }, config);
 
     const updateData = await updateResponse.json();
     updateSpinner.stop();
