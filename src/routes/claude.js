@@ -1,23 +1,5 @@
 const Validators = require('../utils/validators');
 const crypto = require('crypto');
-const path = require('path');
-const os = require('os');
-
-/**
- * 展开路径中的 ~ 符号
- * @param {string} inputPath - 输入路径
- * @returns {string} 展开后的路径
- */
-function expandPath(inputPath) {
-  if (!inputPath) return inputPath;
-  if (inputPath.startsWith('~/')) {
-    return path.join(os.homedir(), inputPath.substring(2));
-  }
-  if (inputPath === '~') {
-    return os.homedir();
-  }
-  return inputPath;
-}
 
 /**
  * Claude API 路由 (同步)
@@ -229,8 +211,20 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
       });
     }
 
-    // 展开路径中的 ~ 符号
-    const projectPath = expandPath(project_path || config.defaultProjectPath);
+    // 验证并解析项目路径（必须在工作空间下）
+    const pathValidation = Validators.validateProjectPath(
+      project_path,
+      config.workspacePath
+    );
+
+    if (!pathValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: pathValidation.error,
+      });
+    }
+
+    const projectPath = pathValidation.fullPath;
 
     // 流式输出暂不支持
     if (stream) {
@@ -453,8 +447,21 @@ function createClaudeRoutes(claudeExecutor, config, taskQueue = null, sessionMan
     }
 
     const { prompts, project_path, model } = validation.value;
-    // 展开路径中的 ~ 符号
-    const projectPath = expandPath(project_path || config.defaultProjectPath);
+
+    // 验证并解析项目路径（必须在工作空间下）
+    const pathValidation = Validators.validateProjectPath(
+      project_path,
+      config.workspacePath
+    );
+
+    if (!pathValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: pathValidation.error,
+      });
+    }
+
+    const projectPath = pathValidation.fullPath;
 
     // 并发执行所有请求
     const promises = prompts.map(prompt =>
@@ -651,8 +658,20 @@ function createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManag
       });
     }
 
-    // 展开路径中的 ~ 符号
-    const projectPath = expandPath(project_path || config.defaultProjectPath);
+    // 验证并解析项目路径（必须在工作空间下）
+    const pathValidation = Validators.validateProjectPath(
+      project_path,
+      config.workspacePath
+    );
+
+    if (!pathValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: pathValidation.error,
+      });
+    }
+
+    const projectPath = pathValidation.fullPath;
 
     // 检查任务队列是否可用
     if (!taskQueue) {

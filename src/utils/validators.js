@@ -1,9 +1,59 @@
 const Joi = require('joi');
+const path = require('path');
 
 /**
  * 验证工具
  */
 class Validators {
+  /**
+   * 验证并解析项目路径
+   * 确保项目路径在工作空间目录下
+   * @param {string} projectPath - 用户提供的项目路径
+   * @param {string} workspacePath - 工作空间根目录
+   * @returns {Object} { valid: boolean, fullPath?: string, error?: string }
+   */
+  static validateProjectPath(projectPath, workspacePath) {
+    if (!projectPath) {
+      // 没有提供项目路径，使用工作空间根目录
+      return {
+        valid: true,
+        fullPath: workspacePath
+      };
+    }
+
+    // 处理输入路径
+    let processedPath = projectPath;
+
+    // 如果是绝对路径（以 / 开头），去掉开头的 /，当作相对路径处理
+    if (processedPath.startsWith('/')) {
+      processedPath = processedPath.substring(1);
+    }
+
+    // 展开路径中的 ~ 符号
+    if (processedPath.startsWith('~')) {
+      processedPath = path.join(process.env.HOME || require('os').homedir(), processedPath.substring(2));
+    }
+
+    // 相对于工作空间解析
+    let fullPath = path.resolve(workspacePath, processedPath);
+
+    // 安全检查：确保解析后的路径在工作空间下
+    const normalizedWorkspace = path.resolve(workspacePath);
+    const normalizedFull = path.resolve(fullPath);
+
+    if (!normalizedFull.startsWith(normalizedWorkspace)) {
+      return {
+        valid: false,
+        error: `项目路径必须在工作空间目录下。工作空间: ${normalizedWorkspace}, 解析后路径: ${normalizedFull}`
+      };
+    }
+
+    return {
+      valid: true,
+      fullPath: normalizedFull
+    };
+  }
+
   /**
    * 验证 Claude API 请求
    */

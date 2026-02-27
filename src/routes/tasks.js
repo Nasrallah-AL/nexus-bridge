@@ -1,20 +1,4 @@
 const Validators = require('../utils/validators');
-const path = require('path');
-const os = require('os');
-
-/**
- * 展开路径中的 ~ 符号
- */
-function expandPath(inputPath) {
-  if (!inputPath) return inputPath;
-  if (inputPath.startsWith('~/')) {
-    return path.join(os.homedir(), inputPath.substring(2));
-  }
-  if (inputPath === '~') {
-    return os.homedir();
-  }
-  return inputPath;
-}
 
 /**
  * 创建异步任务路由
@@ -115,12 +99,22 @@ function createTaskRoutes(taskQueue) {
     }
 
     try {
-      // 展开路径中的 ~ 符号
-      const projectPath = expandPath(validation.value.project_path || req.app.locals.config?.defaultProjectPath);
+      // 验证并解析项目路径（必须在工作空间下）
+      const pathValidation = Validators.validateProjectPath(
+        validation.value.project_path,
+        req.app.locals.config?.workspacePath
+      );
+
+      if (!pathValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          error: pathValidation.error,
+        });
+      }
 
       const taskData = {
         ...validation.value,
-        project_path: projectPath,
+        project_path: pathValidation.fullPath,
       };
 
       const task = await taskQueue.addTask(taskData);

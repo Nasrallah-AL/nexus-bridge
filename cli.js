@@ -17,7 +17,7 @@ const defaultConfig = {
   host: '0.0.0.0',
   claudePath: 'claude',  // 使用系统 PATH 中的 claude 命令
   nodeBinDir: null,  // 可选，Node.js bin 目录（如 /usr/local/bin 或 ~/.nvm/versions/node/v22.21.0/bin）
-  defaultProjectPath: path.join(process.env.HOME || os.homedir(), 'workspace'),
+  workspacePath: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'workspace'),  // 工作空间根目录
   logFile: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'logs', 'server.log'),
   pidFile: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'server.pid'),
   dataDir: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'data'),
@@ -72,9 +72,24 @@ function loadConfig() {
 
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
-  // 展开配置中的路径（处理 ~ 符号）
-  if (config.defaultProjectPath && config.defaultProjectPath.startsWith('~')) {
-    config.defaultProjectPath = path.join(os.homedir(), config.defaultProjectPath.substring(2));
+  // 兼容旧配置：如果有 defaultProjectPath，重命名为 workspacePath
+  if (config.defaultProjectPath && !config.workspacePath) {
+    config.workspacePath = config.defaultProjectPath;
+    delete config.defaultProjectPath;
+    // 保存更新的配置
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log(chalk.yellow('配置已更新：defaultProjectPath 重命名为 workspacePath'));
+  }
+
+  // 展开工作空间路径中的 ~ 符号
+  if (config.workspacePath && config.workspacePath.startsWith('~')) {
+    config.workspacePath = path.join(os.homedir(), config.workspacePath.substring(2));
+  }
+
+  // 确保工作空间目录存在
+  if (config.workspacePath && !fs.existsSync(config.workspacePath)) {
+    fs.mkdirSync(config.workspacePath, { recursive: true });
+    console.log(chalk.yellow(`已创建工作空间目录: ${config.workspacePath}`));
   }
 
   return config;
@@ -451,9 +466,9 @@ async function configureSettings() {
     },
     {
       type: 'input',
-      name: 'defaultProjectPath',
-      message: '默认项目路径:',
-      default: config.defaultProjectPath,
+      name: 'workspacePath',
+      message: '工作空间路径 (所有项目必须在此目录下):',
+      default: config.workspacePath,
     },
   ]);
 
@@ -647,6 +662,7 @@ async function configureSettings() {
   console.log('');
   console.log(chalk.bold.cyan('配置摘要:'));
   console.log(`  ${chalk.white('端口:')} ${config.port}`);
+  console.log(`  ${chalk.white('工作空间:')} ${config.workspacePath}`);
   console.log(`  ${chalk.white('跳过权限检查:')} ${config.allowDangerouslySkipPermissions ? chalk.red('已启用') : chalk.gray('未启用（默认）')}`);
   console.log(`  ${chalk.white('Webhook:')} ${config.webhook.enabled ? chalk.green('已启用') : chalk.gray('未启用')}`);
   if (config.webhook.enabled && config.webhook.defaultUrl) {
@@ -679,7 +695,7 @@ async function visualConfigEditor() {
         { key: 'host', label: '监听地址', value: config.host, type: 'string' },
         { key: 'claudePath', label: 'Claude 路径 (默认: claude)', value: config.claudePath, type: 'string' },
         { key: 'nodeBinDir', label: 'Node.js bin 目录 (可选)', value: config.nodeBinDir, type: 'string' },
-        { key: 'defaultProjectPath', label: '默认项目路径', value: config.defaultProjectPath, type: 'string' },
+        { key: 'workspacePath', label: '工作空间路径', value: config.workspacePath, type: 'string' },
         { key: 'sessionRetentionDays', label: '会话保留天数', value: config.sessionRetentionDays, type: 'number' },
         { key: 'logLevel', label: '日志级别', value: config.logLevel || 'info', type: 'string', options: ['debug', 'info', 'warn', 'error'] },
         { key: 'maxBudgetUsd', label: '最大预算 (USD)', value: config.maxBudgetUsd, type: 'number' },

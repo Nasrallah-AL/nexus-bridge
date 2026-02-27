@@ -341,8 +341,7 @@ async function main() {
     const logger = require('./src/utils/logger')({ logFile: config.logFile, logLevel: config.logLevel });
     logger.info(`Claude Code Server started on http://${HOST}:${PORT}`);
     logger.info(`Claude path: ${config.claudePath}`);
-    logger.info(`NVM bin: ${config.nvmBin}`);
-    logger.info(`Default project: ${config.defaultProjectPath}`);
+    logger.info(`Workspace: ${config.workspacePath}`);
 
     // 启动统计收集器
     statisticsCollector.start();
