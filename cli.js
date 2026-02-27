@@ -70,7 +70,14 @@ function loadConfig() {
     console.log(chalk.yellow(`已创建默认配置文件: ${configPath}`));
   }
 
-  return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+  // 展开配置中的路径（处理 ~ 符号）
+  if (config.defaultProjectPath && config.defaultProjectPath.startsWith('~')) {
+    config.defaultProjectPath = path.join(os.homedir(), config.defaultProjectPath.substring(2));
+  }
+
+  return config;
 }
 
 let config = loadConfig();

@@ -298,7 +298,23 @@ class ClaudeExecutor {
 
       child.on('error', (err) => {
         clearTimeout(timeout);
-        const error = new Error(`Failed to spawn command: ${err.message}`);
+
+        // 根据错误类型提供更友好的错误信息
+        let errorMessage = `Failed to spawn command: ${err.message}`;
+
+        if (err.code === 'ENOENT') {
+          // 文件不存在错误
+          if (this.config.claudePath.includes('~')) {
+            errorMessage = 'project_path contains "~" which is not supported. Please use absolute path instead (e.g., "/root/workspace" instead of "~/workspace")';
+          } else {
+            errorMessage = `Claude CLI not found at "${this.config.claudePath}". Please check:\n` +
+              `1. Claude CLI is installed: npm install -g @anthropic-ai/claude-code\n` +
+              `2. Configuration path is correct\n` +
+              `3. If using NVM, configure nodeBinDir in config.json`;
+          }
+        }
+
+        const error = new Error(errorMessage);
         error.details = {
           spawnError: err.message,
           spawnCode: err.code,

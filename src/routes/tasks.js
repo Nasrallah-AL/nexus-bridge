@@ -1,4 +1,20 @@
 const Validators = require('../utils/validators');
+const path = require('path');
+const os = require('os');
+
+/**
+ * 展开路径中的 ~ 符号
+ */
+function expandPath(inputPath) {
+  if (!inputPath) return inputPath;
+  if (inputPath.startsWith('~/')) {
+    return path.join(os.homedir(), inputPath.substring(2));
+  }
+  if (inputPath === '~') {
+    return os.homedir();
+  }
+  return inputPath;
+}
 
 /**
  * 创建异步任务路由
@@ -99,9 +115,12 @@ function createTaskRoutes(taskQueue) {
     }
 
     try {
+      // 展开路径中的 ~ 符号
+      const projectPath = expandPath(validation.value.project_path || req.app.locals.config?.defaultProjectPath);
+
       const taskData = {
         ...validation.value,
-        project_path: validation.value.project_path || req.app.locals.config?.defaultProjectPath,
+        project_path: projectPath,
       };
 
       const task = await taskQueue.addTask(taskData);
