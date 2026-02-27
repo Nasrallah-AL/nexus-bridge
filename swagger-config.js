@@ -58,6 +58,7 @@ const options = {
     tags: [
       { name: 'Claude', description: 'Claude CLI execution endpoints' },
       { name: 'Sessions', description: 'Session management endpoints' },
+      { name: 'Projects', description: 'Historical projects and statistics endpoints' },
       { name: 'Tasks', description: 'Async task management endpoints' },
       { name: 'Statistics', description: 'Statistics and analytics endpoints' },
       { name: 'Health', description: 'Health check endpoints' },

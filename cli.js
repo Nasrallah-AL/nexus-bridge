@@ -1186,6 +1186,43 @@ async function listSessions() {
   }
 }
 
+// 列出历史项目
+async function listProjects() {
+  const { running } = isServerRunning();
+
+  if (!running) {
+    console.log(chalk.red('✗ 服务未运行，请先启动服务'));
+    return;
+  }
+
+  const spinner = ora('获取历史项目列表...').start();
+
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/projects`, {}, config);
+    const data = await response.json();
+
+    spinner.stop();
+
+    if (data.success && data.projects.length > 0) {
+      console.log('');
+      console.log(chalk.bold.cyan(`找到 ${data.projects.length} 个历史项目：`));
+      console.log('');
+
+      data.projects.forEach((project, index) => {
+        console.log(`${chalk.bold((index + 1) + '.')} ${chalk.white(project.relative_path)}`);
+        console.log(`   ${chalk.gray('路径:')} ${project.project_path}`);
+        console.log(`   ${chalk.gray('会话数:')} ${project.session_count} | ${chalk.gray('消息数:')} ${project.messages_count} | ${chalk.gray('花费:')} $${project.total_cost_usd.toFixed(4)}`);
+        console.log(`   ${chalk.gray('最后活动:')} ${new Date(project.last_activity).toLocaleString()}`);
+        console.log('');
+      });
+    } else {
+      spinner.warn('没有找到任何历史项目');
+    }
+  } catch (error) {
+    spinner.fail('获取项目列表失败: ' + error.message);
+  }
+}
+
 // 查看会话详情
 async function viewSessionDetails() {
   const { running } = isServerRunning();
@@ -1694,6 +1731,7 @@ async function mainMenu() {
         { name: '💬 会话管理', value: 'sessions', disabled: !running ? '服务未运行' : false },
         { name: '📊 查看统计', value: 'statistics', disabled: !running ? '服务未运行' : false },
         { name: '📋 任务列表', value: 'tasks', disabled: !running ? '服务未运行' : false },
+        { name: '🏠 历史项目', value: 'projects', disabled: !running ? '服务未运行' : false },
         { name: '📋 查看日志 (tail -f)', value: 'logs', disabled: !fs.existsSync(logFile) ? '无日志文件' : false },
         { name: '📖 查看接口文档', value: 'docs' },
         { name: '📝 配置设置', value: 'visualConfig' },
@@ -1721,6 +1759,9 @@ async function mainMenu() {
       break;
     case 'tasks':
       await tasksMenu();
+      break;
+    case 'projects':
+      await listProjects();
       break;
     case 'logs':
       await viewLogs();

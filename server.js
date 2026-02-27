@@ -195,6 +195,7 @@ async function main() {
   const createConfigRoute = require('./src/routes/config');
   const { createClaudeRoutes, createAsyncClaudeRoutes } = require('./src/routes/claude');
   const createSessionRoutes = require('./src/routes/sessions');
+  const createProjectsRoutes = require('./src/routes/projects');
   const createStatisticsRoutes = require('./src/routes/statistics');
   const createTaskRoutes = require('./src/routes/tasks');
   const createAuthMiddleware = require('./src/middleware/auth');
@@ -225,6 +226,7 @@ async function main() {
   // Asynchronous message processing
   app.use('/api/async/messages', createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager));
   app.use('/api/sessions', createSessionRoutes(sessionManager));
+  app.use('/api/projects', createProjectsRoutes(sessionStore, config));
   app.use('/api/statistics', createStatisticsRoutes(statisticsCollector));
   app.use('/api/tasks', createTaskRoutes(taskQueue));
 
