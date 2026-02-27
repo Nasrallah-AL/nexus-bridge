@@ -90,9 +90,12 @@ class ClaudeExecutor {
 
       this.logger.info(`Executing Claude command`, {
         prompt: prompt.substring(0, 50) + '...',
-        projectPath,
-        model,
-        args: args.join(' ').substring(0, 200) + '...',
+        project_path: projectPath,
+        model: model,
+        session_id: sessionId,
+        claude_path: this.config.claudePath,
+        node_bin_dir: this.config.nodeBinDir || 'not configured',
+        args_preview: args.join(' ').substring(0, 200) + '...',
       });
 
       // 使用 spawn 异步执行
@@ -183,10 +186,23 @@ class ClaudeExecutor {
     } catch (err) {
       const duration = Date.now() - startTime;
 
-      this.logger.error(`Claude command failed`, {
+      // 构建详细的错误日志
+      const logData = {
         error: err.message,
         duration_ms: duration,
-      });
+        session_id: sessionId,
+        model: model,
+        project_path: projectPath,
+        claude_path: this.config.claudePath,
+        node_bin_dir: this.config.nodeBinDir || 'not configured',
+      };
+
+      // 如果有详细信息，添加到日志
+      if (err.details) {
+        logData.details = err.details;
+      }
+
+      this.logger.error(`Claude command failed`, logData);
 
       // 记录失败统计
       if (this.statsStore && this.config.statistics?.enabled) {
@@ -200,6 +216,7 @@ class ClaudeExecutor {
         success: false,
         error: err.message,
         duration_ms: duration,
+        details: err.details || null,  // 包含详细错误信息用于调试
       };
     }
   }
@@ -237,7 +254,7 @@ class ClaudeExecutor {
       // 超时处理
       const timeout = setTimeout(() => {
         child.kill('SIGTERM');
-        reject(new Error('Command execution timeout'));
+        reject(new Error('Command execution timeout (300s)'));
       }, 300000); // 5分钟超时
 
       child.on('close', (code) => {
@@ -245,24 +262,53 @@ class ClaudeExecutor {
         const output = stdout || stderr;
 
         if (code !== 0) {
-          return reject(new Error(`Command failed with code ${code}: ${output}`));
+          const error = new Error(`Command failed with exit code ${code}`);
+          error.details = {
+            exitCode: code,
+            stdout: stdout.substring(0, 1000), // 限制输出长度
+            stderr: stderr.substring(0, 1000),
+            fullOutput: output.substring(0, 2000),
+          };
+          return reject(error);
         }
 
         if (!output || output.trim().length === 0) {
-          return reject(new Error('Empty output from Claude CLI'));
+          const error = new Error('Empty output from Claude CLI');
+          error.details = {
+            stdout: stdout.substring(0, 500),
+            stderr: stderr.substring(0, 500),
+          };
+          return reject(error);
         }
 
         try {
           const result = JSON.parse(output.trim());
           resolve(result);
         } catch (err) {
-          reject(new Error(`Failed to parse JSON output: ${err.message}`));
+          const error = new Error(`Failed to parse JSON output: ${err.message}`);
+          error.details = {
+            parseError: err.message,
+            rawOutput: output.substring(0, 2000),
+            stdoutLength: stdout.length,
+            stderrLength: stderr.length,
+          };
+          return reject(error);
         }
       });
 
       child.on('error', (err) => {
         clearTimeout(timeout);
-        reject(new Error(`Failed to spawn command: ${err.message}`));
+        const error = new Error(`Failed to spawn command: ${err.message}`);
+        error.details = {
+          spawnError: err.message,
+          spawnCode: err.code,
+          claudePath: this.config.claudePath,
+          projectPath,
+          args: args.join(' '),
+          envPATH: env.PATH,
+          nodeBinDir: this.config.nodeBinDir,
+        };
+        return reject(error);
       });
     });
   }

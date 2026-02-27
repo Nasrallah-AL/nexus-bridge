@@ -302,7 +302,7 @@ async function viewLogs() {
         message: '操作:',
         choices: [
           { name: '🔄 刷新日志', value: 'refresh' },
-          { name: '📄 查看更多 (最近 50 行)', value: 'more' },
+          { name: '📄 查看更多 (最近 500 行)', value: 'more' },
           { name: '🔍 搜索日志', value: 'search' },
           { name: '◀ 返回主菜单', value: 'back' },
         ],
@@ -314,8 +314,8 @@ async function viewLogs() {
     } else if (action === 'more') {
       // 查看更多日志
       console.clear();
-      console.log(chalk.bold.cyan(`📋 最近 50 行日志 - ${logFile}`));
-      console.log(chalk.gray('='.repeat(60)));
+      console.log(chalk.bold.cyan(`📋 最近 500 行日志 - ${logFile}`));
+      console.log(chalk.gray('='.repeat(600)));
       console.log('');
 
       try {
