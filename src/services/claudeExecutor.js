@@ -98,6 +98,22 @@ class ClaudeExecutor {
         args_preview: args.join(' ').substring(0, 200) + '...',
       });
 
+      // 确保项目目录存在
+      const fs = require('fs');
+      if (!fs.existsSync(projectPath)) {
+        this.logger.info(`Creating project directory`, { project_path: projectPath });
+        try {
+          fs.mkdirSync(projectPath, { recursive: true });
+          this.logger.info(`Project directory created`, { project_path: projectPath });
+        } catch (mkdirErr) {
+          // 如果创建失败，记录错误并继续执行
+          this.logger.warn(`Failed to create project directory`, {
+            project_path: projectPath,
+            error: mkdirErr.message
+          });
+        }
+      }
+
       // 使用 spawn 异步执行
       let result;
       try {
@@ -234,6 +250,21 @@ class ClaudeExecutor {
         env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
       }
 
+      // 确保项目目录存在
+      const fs = require('fs');
+      if (!fs.existsSync(projectPath)) {
+        try {
+          fs.mkdirSync(projectPath, { recursive: true });
+        } catch (mkdirErr) {
+          const error = new Error(`Failed to create project directory: ${mkdirErr.message}`);
+          error.details = {
+            projectPath,
+            mkdirError: mkdirErr.message,
+          };
+          return reject(error);
+        }
+      }
+
       const child = spawn(this.config.claudePath, args, {
         cwd: projectPath,
         env,
@@ -300,17 +331,28 @@ class ClaudeExecutor {
         clearTimeout(timeout);
 
         // 根据错误类型提供更友好的错误信息
-        let errorMessage = `Failed to spawn command: ${err.message}`;
+        let errorMessage = `Failed to start Claude CLI: ${err.message}`;
 
         if (err.code === 'ENOENT') {
-          // 文件不存在错误
-          if (this.config.claudePath.includes('~')) {
-            errorMessage = 'project_path contains "~" which is not supported. Please use absolute path instead (e.g., "/root/workspace" instead of "~/workspace")';
-          } else {
-            errorMessage = `Claude CLI not found at "${this.config.claudePath}". Please check:\n` +
+          // 文件不存在错误 - 检查是哪个文件
+          const fs = require('fs');
+
+          // 检查 claudePath 是否存在
+          if (!fs.existsSync(this.config.claudePath)) {
+            errorMessage = `Claude CLI not found at "${this.config.claudePath}".\n\n` +
+              `Please check:\n` +
               `1. Claude CLI is installed: npm install -g @anthropic-ai/claude-code\n` +
               `2. Configuration path is correct\n` +
-              `3. If using NVM, configure nodeBinDir in config.json`;
+              `3. If using NVM, configure nodeBinDir in config.json\n\n` +
+              `Current claudePath: ${this.config.claudePath}\n` +
+              `Current nodeBinDir: ${this.config.nodeBinDir || 'not configured'}`;
+          } else {
+            // claudePath 存在，可能是其他问题
+            errorMessage = `Failed to execute command. Please check:\n` +
+              `1. Claude CLI is properly installed\n` +
+              `2. nodeBinDir is correctly configured (if using NVM)\n` +
+              `3. File permissions are correct\n\n` +
+              `Error: ${err.message}`;
           }
         }
 
