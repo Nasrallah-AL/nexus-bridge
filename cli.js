@@ -15,8 +15,8 @@ const configPath = path.join(configDir, 'config.json');
 const defaultConfig = {
   port: 5546,
   host: '0.0.0.0',
-  claudePath: path.join(process.env.HOME || os.homedir(), '.nvm', 'versions', 'node', 'v22.21.0', 'bin', 'claude'),
-  nvmBin: path.join(process.env.HOME || os.homedir(), '.nvm', 'versions', 'node', 'v22.21.0', 'bin'),
+  claudePath: 'claude',  // 使用系统 PATH 中的 claude 命令
+  nodeBinDir: null,  // 可选，Node.js bin 目录（如 /usr/local/bin 或 ~/.nvm/versions/node/v22.21.0/bin）
   defaultProjectPath: path.join(process.env.HOME || os.homedir(), 'workspace'),
   logFile: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'logs', 'server.log'),
   pidFile: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'server.pid'),
@@ -438,9 +438,9 @@ async function configureSettings() {
     },
     {
       type: 'input',
-      name: 'nvmBin',
-      message: 'NVM bin 路径:',
-      default: config.nvmBin,
+      name: 'nodeBinDir',
+      message: 'Node.js bin 目录 (可选，按回车跳过):',
+      default: config.nodeBinDir || '',
     },
     {
       type: 'input',
@@ -452,6 +452,11 @@ async function configureSettings() {
 
   // 更新基本配置
   Object.assign(config, basicAnswers);
+
+  // 如果 nodeBinDir 为空字符串，设置为 null
+  if (config.nodeBinDir === '') {
+    config.nodeBinDir = null;
+  }
 
   // 第二部分：Webhook 配置
   const { enableWebhook } = await inquirer.prompt([
@@ -665,8 +670,8 @@ async function visualConfigEditor() {
       items: [
         { key: 'port', label: '服务端口', value: config.port, type: 'number' },
         { key: 'host', label: '监听地址', value: config.host, type: 'string' },
-        { key: 'claudePath', label: 'Claude 路径', value: config.claudePath, type: 'string' },
-        { key: 'nvmBin', label: 'NVM bin 路径', value: config.nvmBin, type: 'string' },
+        { key: 'claudePath', label: 'Claude 路径 (默认: claude)', value: config.claudePath, type: 'string' },
+        { key: 'nodeBinDir', label: 'Node.js bin 目录 (可选)', value: config.nodeBinDir, type: 'string' },
         { key: 'defaultProjectPath', label: '默认项目路径', value: config.defaultProjectPath, type: 'string' },
         { key: 'sessionRetentionDays', label: '会话保留天数', value: config.sessionRetentionDays, type: 'number' },
         { key: 'logLevel', label: '日志级别', value: config.logLevel || 'info', type: 'string', options: ['debug', 'info', 'warn', 'error'] },

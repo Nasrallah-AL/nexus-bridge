@@ -60,8 +60,8 @@ yarn install
 {
   "port": 5546,
   "host": "0.0.0.0",
-  "claudePath": "~/.nvm/versions/node/v22.21.0/bin/claude",
-  "nvmBin": "~/.nvm/versions/node/v22.21.0/bin",
+  "claudePath": "claude",
+  "nodeBinDir": null,
   "defaultProjectPath": "~/workspace",
   "logFile": "~/.claude-code-server/logs/server.log",
   "pidFile": "~/.claude-code-server/server.pid",
@@ -87,6 +87,16 @@ yarn install
   }
 }
 ```
+
+**注意：**
+- `claudePath` 默认为 `claude`，表示使用系统 PATH 中的 Claude CLI
+- `nodeBinDir` 为可选配置，仅在需要指定特定 Node.js 版本时设置
+- 如果通过 NVM 安装 Node.js，配置示例：
+  ```json
+  "claudePath": "claude",
+  "nodeBinDir": "~/.nvm/versions/node/v22.21.0/bin"
+  ```
+- 如果使用系统默认 Node.js，保持 `nodeBinDir` 为 `null` 即可
 
 ### 2. 启动服务
 
@@ -176,7 +186,8 @@ TUI 包含一个可视化配置编辑器，将所有设置按类别组织：
 
 **📦 基本配置**
 - 服务端口、监听地址
-- Claude CLI 路径、NVM bin 路径
+- Claude CLI 路径（默认使用系统 PATH）
+- Node.js bin 目录（可选，仅在需要指定 Node.js 版本时配置）
 - 默认项目路径
 - 会话保留天数
 - 日志级别、最大预算
@@ -217,8 +228,8 @@ node cli.js
 |--------|------|--------|------|
 | `port` | number | 5546 | 服务端口 |
 | `host` | string | "0.0.0.0" | 监听地址 |
-| `claudePath` | string | - | Claude CLI 可执行文件路径 |
-| `nvmBin` | string | - | NVM bin 目录路径 |
+| `claudePath` | string | "claude" | Claude CLI 可执行文件路径 |
+| `nodeBinDir` | string | null | Node.js bin 目录（可选） |
 | `defaultProjectPath` | string | - | 默认项目路径 |
 | `logFile` | string | "~/.claude-code-server/logs/server.log" | 日志文件路径 |
 | `pidFile` | string | "~/.claude-code-server/server.pid" | PID 文件路径 |

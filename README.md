@@ -60,8 +60,8 @@ The configuration file is located at `~/.claude-code-server/config.json` (auto-g
 {
   "port": 5546,
   "host": "0.0.0.0",
-  "claudePath": "~/.nvm/versions/node/v22.21.0/bin/claude",
-  "nvmBin": "~/.nvm/versions/node/v22.21.0/bin",
+  "claudePath": "claude",
+  "nodeBinDir": null,
   "defaultProjectPath": "~/workspace",
   "logFile": "~/.claude-code-server/logs/server.log",
   "pidFile": "~/.claude-code-server/server.pid",
@@ -87,6 +87,16 @@ The configuration file is located at `~/.claude-code-server/config.json` (auto-g
   }
 }
 ```
+
+**Note:**
+- `claudePath` defaults to `claude`, using the Claude CLI from system PATH
+- `nodeBinDir` is optional, only needed when specifying a particular Node.js version
+- If using NVM, configure like:
+  ```json
+  "claudePath": "claude",
+  "nodeBinDir": "~/.nvm/versions/node/v22.21.0/bin"
+  ```
+- For system Node.js, keep `nodeBinDir` as `null`
 
 ### 2. Start the Service
 
@@ -176,7 +186,8 @@ The TUI includes a visual configuration editor that organizes all settings into 
 
 **📦 Basic Configuration**
 - Server port, host address
-- Claude CLI path, NVM bin path
+- Claude CLI path (uses system PATH by default)
+- Node.js bin directory (optional, only when specifying Node.js version)
 - Default project path
 - Session retention days
 - Log level, max budget
@@ -217,8 +228,8 @@ node cli.js
 |--------|------|---------|-------------|
 | `port` | number | 5546 | Server port |
 | `host` | string | "0.0.0.0" | Listen address |
-| `claudePath` | string | - | Claude CLI executable path |
-| `nvmBin` | string | - | NVM bin directory path |
+| `claudePath` | string | "claude" | Claude CLI executable path |
+| `nodeBinDir` | string | null | Node.js bin directory (optional) |
 | `defaultProjectPath` | string | - | Default project path |
 | `logFile` | string | "~/.claude-code-server/logs/server.log" | Log file path |
 | `pidFile` | string | "~/.claude-code-server/server.pid" | PID file path |

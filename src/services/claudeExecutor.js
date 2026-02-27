@@ -210,7 +210,12 @@ class ClaudeExecutor {
   spawnCommand(projectPath, args) {
     return new Promise((resolve, reject) => {
       const env = { ...process.env };
-      env.PATH = `${this.config.nvmBin}:${env.PATH}`;
+
+      // 如果配置了 nodeBinDir，添加到 PATH 中
+      // 这样可以确保使用正确的 Node.js 版本（适用于 NVM、nvm-windows 等场景）
+      if (this.config.nodeBinDir) {
+        env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
+      }
 
       const child = spawn(this.config.claudePath, args, {
         cwd: projectPath,

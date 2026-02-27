@@ -51,12 +51,8 @@ const options = {
     },
     servers: [
       {
-        url: 'http://localhost:5546',
-        description: 'Development server'
-      },
-      {
-        url: 'https://api.your-domain.com',
-        description: 'Production server'
+        url: '/',
+        description: 'Current server (auto-detected from browser address)'
       }
     ],
     tags: [
