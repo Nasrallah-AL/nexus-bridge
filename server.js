@@ -194,6 +194,7 @@ async function main() {
   const createSessionRoutes = require('./src/routes/sessions');
   const createStatisticsRoutes = require('./src/routes/statistics');
   const createTaskRoutes = require('./src/routes/tasks');
+  const createAuthMiddleware = require('./src/middleware/auth');
 
   // 创建 Express 应用
   const app = express();
@@ -202,6 +203,13 @@ async function main() {
 
   // 中间件
   app.use(express.json());
+
+  // Create authentication middleware
+  const authMiddleware = createAuthMiddleware(config);
+
+  // Apply authentication to all /api/* routes
+  // Must come after body parser, before route mounting
+  app.use('/api/', authMiddleware);
 
   // 应用速率限制
   app.use('/api/', rateLimiter.getMiddleware());
