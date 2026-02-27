@@ -27,6 +27,7 @@ class StatsStore extends BaseStore {
         total_usd: 0,
       },
       models: {},
+      audit_logs: [],
     };
   }
 

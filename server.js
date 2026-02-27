@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const chalk = require('chalk');
+const { generateSecretKey, deriveApiKey } = require('./src/utils/keyGenerator');
 
 // 配置目录和文件
 const configDir = path.join(process.env.HOME || os.homedir(), '.claude-code-server');
@@ -20,6 +21,13 @@ const defaultConfig = {
   pidFile: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'server.pid'),
   dataDir: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'data'),
   sessionRetentionDays: 30,
+  security: {
+    auth: {
+      enabled: false,
+      secretKey: null,
+      bypassHealthCheck: true
+    }
+  }
 };
 
 // 加载配置（支持异步路径检测）
@@ -47,15 +55,36 @@ async function loadConfig() {
   if (!fs.existsSync(configPath)) {
     // 首次启动，使用默认配置
     config = { ...defaultConfig };
+    config.security.auth.secretKey = generateSecretKey();
     try {
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
       console.log(`✅ 创建配置文件: ${configPath}`);
+      console.log(`✅ 已自动生成 SECRET_KEY`);
+      const apiKey = deriveApiKey(config.security.auth.secretKey);
+      console.log(`📝 API Key: ${apiKey}`);
     } catch (err) {
       console.error(`❌ 创建配置文件失败 ${configPath}:`, err.message);
       throw err;
     }
   } else {
     config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (!config.security) {
+      config.security = { auth: { enabled: false, bypassHealthCheck: true } };
+    }
+    if (!config.security.auth) {
+      config.security.auth = { enabled: false, bypassHealthCheck: true };
+    }
+    if (!config.security.auth.secretKey) {
+      config.security.auth.secretKey = generateSecretKey();
+      try {
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        console.log(`✅ 已自动生成 SECRET_KEY (迁移)`);
+        const apiKey = deriveApiKey(config.security.auth.secretKey);
+        console.log(`📝 API Key: ${apiKey}`);
+      } catch (err) {
+        console.error(`❌ 更新配置失败 ${configPath}:`, err.message);
+      }
+    }
   }
 
   // 自动检测和修复路径
@@ -76,6 +105,14 @@ async function loadConfig() {
 
   // 保存诊断信息用于日志输出
   config._pathDetection = { updates, warnings };
+
+  // Environment variable overrides (take precedence)
+  if (process.env.CCS_SECRET_KEY) {
+    config.security.auth.secretKey = process.env.CCS_SECRET_KEY;
+  }
+  if (process.env.CCS_AUTH_ENABLED !== undefined) {
+    config.security.auth.enabled = process.env.CCS_AUTH_ENABLED === 'true';
+  }
 
   return config;
 }
@@ -117,6 +154,7 @@ async function main() {
     './src/services/statisticsCollector',
     './src/services/taskQueue',
     './src/services/webhookNotifier',
+    './src/services/auditLogger',
     './src/storage/sessionStore',
     './src/storage/taskStore',
     './src/storage/statsStore',
@@ -142,6 +180,7 @@ async function main() {
   const StatisticsCollector = require('./src/services/statisticsCollector');
   const TaskQueue = require('./src/services/taskQueue');
   const WebhookNotifier = require('./src/services/webhookNotifier');
+  const AuditLogger = require('./src/services/auditLogger');
 
   const claudeExecutor = new ClaudeExecutor(config, sessionStore, statsStore);
   const sessionManager = new SessionManager(config, sessionStore, claudeExecutor);
@@ -149,6 +188,7 @@ async function main() {
   const statisticsCollector = new StatisticsCollector(config, statsStore);
   const webhookNotifier = new WebhookNotifier(config);
   const taskQueue = new TaskQueue(config, taskStore, claudeExecutor, webhookNotifier);
+  const auditLogger = new AuditLogger(config, statsStore);
 
   // 加载路由
   const createHealthRoute = require('./src/routes/health');
@@ -157,6 +197,7 @@ async function main() {
   const createSessionRoutes = require('./src/routes/sessions');
   const createStatisticsRoutes = require('./src/routes/statistics');
   const createTaskRoutes = require('./src/routes/tasks');
+  const createAuthMiddleware = require('./src/middleware/auth');
 
   // 创建 Express 应用
   const app = express();
@@ -165,6 +206,13 @@ async function main() {
 
   // 中间件
   app.use(express.json());
+
+  // Create authentication middleware
+  const authMiddleware = createAuthMiddleware(config, auditLogger);
+
+  // Apply authentication to all /api/* routes
+  // Must come after body parser, before route mounting
+  app.use('/api/', authMiddleware);
 
   // 应用速率限制
   app.use('/api/', rateLimiter.getMiddleware());

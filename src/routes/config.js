@@ -2,20 +2,35 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * 配置信息路由
+ * Create config route handler
+ * @param {string} configPath - Path to config file
  */
 function createConfigRoute(configPath) {
   return (req, res) => {
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
-    res.json({
-      port: config.port,
-      defaultProjectPath: config.defaultProjectPath,
-      defaultModel: config.defaultModel,
-      rateLimit: config.rateLimit,
-      statistics: config.statistics,
-      version: require('../../package.json').version,
-    });
+      // Create safe config copy with sensitive data hidden
+      const safeConfig = JSON.parse(JSON.stringify(config));
+
+      // Hide SECRET_KEY
+      if (safeConfig.security?.auth?.secretKey) {
+        safeConfig.security.auth.secretKey = '*** HIDDEN ***';
+      }
+
+      // Hide other sensitive paths if needed
+      // (Future: add more sensitive fields here)
+
+      res.json({
+        success: true,
+        config: safeConfig
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
   };
 }
 

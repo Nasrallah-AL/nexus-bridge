@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { generateSecretKey, deriveApiKey } = require('./src/utils/keyGenerator');
 
 // 配置目录和文件
 const configDir = path.join(process.env.HOME || os.homedir(), '.claude-code-server');
@@ -47,7 +48,14 @@ const defaultConfig = {
     configPath: null
   },
   logLevel: 'info',
-  allowDangerouslySkipPermissions: false
+  allowDangerouslySkipPermissions: false,
+  security: {
+    auth: {
+      enabled: false,
+      secretKey: null,
+      bypassHealthCheck: true
+    }
+  }
 };
 
 // 确保配置目录存在并加载配置
@@ -534,6 +542,89 @@ async function configureSettings() {
     defaultTimeout: queueAnswers.timeout,
   };
 
+  // 第四部分：安全配置
+  const { enableAuth } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'enableAuth',
+      message: '启用 API 认证?',
+      default: config.security?.auth?.enabled || false,
+    },
+  ]);
+
+  // Initialize security config if not exists
+  if (!config.security) {
+    config.security = { auth: { enabled: false, secretKey: null, bypassHealthCheck: true } };
+  }
+  if (!config.security.auth) {
+    config.security.auth = { enabled: false, secretKey: null, bypassHealthCheck: true };
+  }
+
+  config.security.auth.enabled = enableAuth;
+
+  if (enableAuth) {
+    // Show current API key if exists
+    if (config.security.auth.secretKey) {
+      const currentApiKey = deriveApiKey(config.security.auth.secretKey);
+      console.log('');
+      console.log(chalk.cyan('当前 API Key:'));
+      console.log(chalk.bold.white(`  ${currentApiKey}`));
+      console.log('');
+    }
+
+    const { shouldRegenerate, bypassHealthCheck } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'shouldRegenerate',
+        message: '重新生成 API Key?',
+        default: false,
+      },
+      {
+        type: 'confirm',
+        name: 'bypassHealthCheck',
+        message: '允许健康检查跳过认证?',
+        default: config.security.auth.bypassHealthCheck !== undefined ? config.security.auth.bypassHealthCheck : true,
+      },
+    ]);
+
+    if (shouldRegenerate) {
+      const { confirmRegenerate } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirmRegenerate',
+          message: chalk.yellow('确认重新生成? 旧的 API Key 将立即失效!'),
+          default: false,
+        },
+      ]);
+
+      if (confirmRegenerate) {
+        config.security.auth.secretKey = generateSecretKey();
+        const newApiKey = deriveApiKey(config.security.auth.secretKey);
+        console.log('');
+        console.log(chalk.green('✓ 新的 API Key 已生成'));
+        console.log(chalk.bold.white(`  ${newApiKey}`));
+        console.log(chalk.yellow('  请妥善保管此密钥!'));
+        console.log('');
+      }
+    } else if (!config.security.auth.secretKey) {
+      // Auto-generate if missing
+      config.security.auth.secretKey = generateSecretKey();
+      const newApiKey = deriveApiKey(config.security.auth.secretKey);
+      console.log('');
+      console.log(chalk.green('✓ 已自动生成 SECRET_KEY'));
+      console.log(chalk.bold.white(`  API Key: ${newApiKey}`));
+      console.log(chalk.yellow('  请妥善保管此密钥!'));
+      console.log('');
+    }
+
+    config.security.auth.bypassHealthCheck = bypassHealthCheck;
+  } else {
+    // Auth disabled - keep secretKey for future use
+    if (config.security.auth.bypassHealthCheck === undefined) {
+      config.security.auth.bypassHealthCheck = true;
+    }
+  }
+
   // 保存配置
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
@@ -550,7 +641,244 @@ async function configureSettings() {
     console.log(`  ${chalk.white('URL:')} ${config.webhook.defaultUrl}`);
   }
   console.log(`  ${chalk.white('任务队列:')} 并发数 ${config.taskQueue?.concurrency || 3}, 超时 ${config.taskQueue?.defaultTimeout || 300000}ms`);
+
+  // Security info
+  if (config.security?.auth?.enabled) {
+    console.log(`  ${chalk.white('API 认证:')} ${chalk.green('已启用')}`);
+    if (config.security.auth.secretKey) {
+      const apiKey = deriveApiKey(config.security.auth.secretKey);
+      console.log(`  ${chalk.white('API Key:')} ${chalk.bold.cyan(apiKey)}`);
+    }
+    console.log(`  ${chalk.white('健康检查:')} ${config.security.auth.bypassHealthCheck ? chalk.yellow('跳过认证') : chalk.gray('需要认证')}`);
+  } else {
+    console.log(`  ${chalk.white('API 认证:')} ${chalk.gray('未启用')}`);
+  }
   console.log('');
+}
+
+// 可视化配置编辑器
+async function visualConfigEditor() {
+  // Define all configuration sections
+  const configSections = [
+    {
+      name: '📦 基本配置',
+      items: [
+        { key: 'port', label: '服务端口', value: config.port, type: 'number' },
+        { key: 'host', label: '监听地址', value: config.host, type: 'string' },
+        { key: 'claudePath', label: 'Claude 路径', value: config.claudePath, type: 'string' },
+        { key: 'nvmBin', label: 'NVM bin 路径', value: config.nvmBin, type: 'string' },
+        { key: 'defaultProjectPath', label: '默认项目路径', value: config.defaultProjectPath, type: 'string' },
+        { key: 'sessionRetentionDays', label: '会话保留天数', value: config.sessionRetentionDays, type: 'number' },
+        { key: 'logLevel', label: '日志级别', value: config.logLevel || 'info', type: 'string', options: ['debug', 'info', 'warn', 'error'] },
+        { key: 'maxBudgetUsd', label: '最大预算 (USD)', value: config.maxBudgetUsd, type: 'number' },
+      ]
+    },
+    {
+      name: '🔄 Webhook 配置',
+      items: [
+        { key: 'webhook.enabled', label: '启用 Webhook', value: config.webhook?.enabled || false, type: 'boolean' },
+        { key: 'webhook.defaultUrl', label: 'Webhook URL', value: config.webhook?.defaultUrl || '', type: 'string' },
+        { key: 'webhook.timeout', label: '超时时间 (ms)', value: config.webhook?.timeout || 5000, type: 'number' },
+        { key: 'webhook.retries', label: '重试次数', value: config.webhook?.retries || 3, type: 'number' },
+      ]
+    },
+    {
+      name: '📋 任务队列配置',
+      items: [
+        { key: 'taskQueue.concurrency', label: '队列并发数 (1-10)', value: config.taskQueue?.concurrency || 3, type: 'number' },
+        { key: 'taskQueue.defaultTimeout', label: '任务超时 (ms)', value: config.taskQueue?.defaultTimeout || 300000, type: 'number' },
+      ]
+    },
+    {
+      name: '⚡ 速率限制配置',
+      items: [
+        { key: 'rateLimit.enabled', label: '启用速率限制', value: config.rateLimit?.enabled || false, type: 'boolean' },
+        { key: 'rateLimit.windowMs', label: '时间窗口 (ms)', value: config.rateLimit?.windowMs || 60000, type: 'number' },
+        { key: 'rateLimit.maxRequests', label: '最大请求数', value: config.rateLimit?.maxRequests || 100, type: 'number' },
+      ]
+    },
+    {
+      name: '📊 统计配置',
+      items: [
+        { key: 'statistics.enabled', label: '启用统计收集', value: config.statistics?.enabled || false, type: 'boolean' },
+        { key: 'statistics.collectionInterval', label: '采集间隔 (ms)', value: config.statistics?.collectionInterval || 60000, type: 'number' },
+      ]
+    },
+    {
+      name: '🔐 安全配置',
+      items: [
+        { key: 'security.auth.enabled', label: '启用 API 认证', value: config.security?.auth?.enabled || false, type: 'boolean' },
+        { key: 'security.auth.bypassHealthCheck', label: '健康检查绕过认证', value: config.security?.auth?.bypassHealthCheck !== undefined ? config.security.auth.bypassHealthCheck : true, type: 'boolean' },
+        { key: 'allowDangerouslySkipPermissions', label: '跳过权限检查', value: config.allowDangerouslySkipPermissions || false, type: 'boolean' },
+      ]
+    },
+  ];
+
+  console.log('');
+  console.log(chalk.bold.cyan('╔═══════════════════════════════════════════════════════════════╗'));
+  console.log(chalk.bold.cyan('║           📝 可视化配置编辑器                                   ║'));
+  console.log(chalk.bold.cyan('╠═══════════════════════════════════════════════════════════════╣'));
+  console.log(chalk.bold.cyan('║ 💡 使用上下键导航，Enter 编辑选中项，ESC 退出                      ║'));
+  console.log(chalk.bold.cyan('╚═══════════════════════════════════════════════════════════════╝'));
+  console.log('');
+
+  // Flatten all items for selection
+  const allItems = [];
+  configSections.forEach(section => {
+    section.items.forEach(item => {
+      const currentValue = getNestedValue(config, item.key);
+      const displayValue = formatValue(currentValue, item.type);
+
+      allItems.push({
+        name: `${chalk.gray(section.name)} ${chalk.white('│')} ${chalk.cyan(item.label)}: ${chalk.yellow(displayValue)}`,
+        value: item,
+        short: `${item.label} (${displayValue})`,
+      });
+    });
+  });
+
+  // Main menu loop
+  while (true) {
+    const { selectedItem } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'selectedItem',
+        message: '选择要修改的配置项:',
+        pageSize: 20,
+        choices: [
+          ...allItems,
+          new inquirer.Separator(),
+          { name: '💾 保存配置并退出', value: 'save' },
+          { name: '🚪 放弃更改并退出', value: 'exit' },
+          { name: '📄 在外部编辑器中打开配置文件', value: 'edit' },
+          new inquirer.Separator(),
+          { name: '◀ 返回主菜单', value: 'back' },
+        ],
+      },
+    ]);
+
+    if (selectedItem === 'save') {
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      console.log('');
+      console.log(chalk.green('✓ 配置已保存到:'), configPath);
+      console.log(chalk.cyan('ℹ 配置将在约 1 秒内通过热重载生效'));
+      console.log('');
+      break;
+    } else if (selectedItem === 'exit') {
+      console.log('');
+      console.log(chalk.yellow('○ 已放弃更改'));
+      console.log('');
+      break;
+    } else if (selectedItem === 'back') {
+      console.log('');
+      break;
+    } else if (selectedItem === 'edit') {
+      await openInEditor();
+    } else {
+      // Edit selected item
+      const item = selectedItem.value;
+      const currentValue = getNestedValue(config, item.key);
+
+      if (item.type === 'boolean') {
+        const { newValue } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'newValue',
+            message: item.label,
+            default: currentValue,
+          },
+        ]);
+        setNestedValue(config, item.key, newValue);
+      } else if (item.options) {
+        const { newValue } = await inquirer.prompt([
+          {
+            type: 'list',
+            name: 'newValue',
+            message: item.label,
+            choices: item.options.map(opt => ({ name: opt, value: opt })),
+            default: currentValue,
+          },
+        ]);
+        setNestedValue(config, item.key, newValue);
+      } else if (item.type === 'number') {
+        const { newValue } = await inquirer.prompt([
+          {
+            type: 'number',
+            name: 'newValue',
+            message: item.label,
+            default: currentValue,
+          },
+        ]);
+        setNestedValue(config, item.key, newValue);
+      } else {
+        const { newValue } = await inquirer.prompt([
+          {
+            type: 'input',
+            name: 'newValue',
+            message: item.label,
+            default: currentValue ? currentValue.toString() : '',
+          },
+        ]);
+        setNestedValue(config, item.key, newValue);
+      }
+
+      console.log(chalk.green(`✓ ${item.label} 已更新`));
+      console.log('');
+    }
+  }
+}
+
+function formatValue(value, type) {
+  if (value === undefined || value === null) return '未设置';
+  if (type === 'boolean') return value ? '是' : '否';
+  return value.toString();
+}
+
+function getNestedValue(obj, key) {
+  const keys = key.split('.');
+  let current = obj;
+  for (const k of keys) {
+    if (current && current[k] !== undefined) {
+      current = current[k];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+}
+
+function setNestedValue(obj, key, value) {
+  const keys = key.split('.');
+  let current = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (!current[keys[i]]) {
+      current[keys[i]] = {};
+    }
+    current = current[keys[i]];
+  }
+  current[keys[keys.length - 1]] = value;
+}
+
+async function openInEditor() {
+  const editor = process.env.EDITOR || 'vi';
+  console.log('');
+  console.log(chalk.cyan(`正在使用 ${editor} 打开配置文件...`));
+  console.log(chalk.gray(`文件: ${configPath}`));
+  console.log('');
+
+  const { execSync } = require('child_process');
+  try {
+    execSync(`${editor} ${configPath}`, { stdio: 'inherit' });
+    console.log('');
+    console.log(chalk.green('✓ 编辑器已关闭，配置已更新'));
+
+    // 重新加载配置
+    const updatedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    Object.assign(config, updatedConfig);
+  } catch (error) {
+    console.log('');
+    console.error(chalk.red('✗ 打开编辑器失败:', error.message));
+  }
 }
 
 // 显示 API 文档
@@ -1242,6 +1570,7 @@ async function mainMenu() {
         { name: '📋 查看日志 (tail -f)', value: 'logs', disabled: !fs.existsSync(logFile) ? '无日志文件' : false },
         { name: '📖 查看接口文档', value: 'docs' },
         { name: '⚙ 配置设置', value: 'config' },
+        { name: '📝 可视化配置编辑器', value: 'visualConfig' },
         { name: '🧪 测试 API', value: 'test', disabled: !running ? '服务未运行' : false },
         { name: '✖ 退出', value: 'exit' },
       ],
@@ -1275,6 +1604,9 @@ async function mainMenu() {
       break;
     case 'config':
       await configureSettings();
+      break;
+    case 'visualConfig':
+      await visualConfigEditor();
       break;
     case 'test':
       await testApi();
