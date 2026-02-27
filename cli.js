@@ -737,6 +737,7 @@ async function visualConfigEditor() {
       items: [
         { key: 'security.auth.enabled', label: '启用 API 认证', value: config.security?.auth?.enabled || false, type: 'boolean' },
         { key: 'security.auth.bypassHealthCheck', label: '健康检查绕过认证', value: config.security?.auth?.bypassHealthCheck !== undefined ? config.security.auth.bypassHealthCheck : true, type: 'boolean' },
+        { key: 'view_api_key', label: '🔑 查看当前 API Key', value: 'view', type: 'viewkey' },
         { key: 'allowDangerouslySkipPermissions', label: '跳过权限检查', value: config.allowDangerouslySkipPermissions || false, type: 'boolean' },
       ]
     },
@@ -824,7 +825,47 @@ async function visualConfigEditor() {
       const item = selectedItem;
       const currentValue = getNestedValue(config, item.key);
 
-      if (item.type === 'boolean') {
+      // 特殊处理：查看 API Key
+      if (item.type === 'viewkey') {
+        console.log('');
+        console.log(chalk.bold.cyan('╔═══════════════════════════════════════════════════════════════╗'));
+        console.log(chalk.bold.cyan('║                     🔑 API Key 信息                           ║'));
+        console.log(chalk.bold.cyan('╚═══════════════════════════════════════════════════════════════╝'));
+        console.log('');
+
+        if (config.security?.auth?.enabled && config.security.auth.secretKey) {
+          const apiKey = deriveApiKey(config.security.auth.secretKey);
+          console.log(`${chalk.white('API Key:')} ${chalk.bold.green(apiKey)}`);
+          console.log('');
+          console.log(chalk.cyan('使用方法:'));
+          console.log(chalk.gray('  curl -X POST http://localhost:5546/api/messages \\'));
+          console.log(chalk.gray('    -H "Content-Type: application/json" \\'));
+          console.log(chalk.gray('    -H "Authorization: Bearer ' + apiKey + '" \\'));
+          console.log(chalk.gray('    -d \'{"prompt": "你好"}\''));
+          console.log('');
+        } else {
+          console.log(chalk.yellow('⚠ API 认证未启用'));
+          console.log('');
+          console.log(chalk.gray('请先启用 "启用 API 认证" 选项，系统会自动生成 API Key'));
+          console.log('');
+        }
+
+        const { continueEdit } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'continueEdit',
+            message: '按 Enter 继续',
+            default: true,
+          },
+        ]);
+
+        if (!continueEdit) {
+          console.log('');
+          console.log(chalk.green('✓ 配置已保存，退出配置编辑'));
+          console.log('');
+          break;
+        }
+      } else if (item.type === 'boolean') {
         const { newValue } = await inquirer.prompt([
           {
             type: 'confirm',
@@ -911,6 +952,9 @@ async function visualConfigEditor() {
 }
 
 function formatValue(value, type) {
+  // 特殊类型：查看 API Key，始终显示固定文本
+  if (type === 'viewkey') return '点击查看';
+
   // 先检查是否存在
   if (value === undefined || value === null) return '未设置';
 
