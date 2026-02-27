@@ -789,6 +789,7 @@ async function visualConfigEditor() {
         { key: 'security.auth.enabled', label: '启用 API 认证', value: config.security?.auth?.enabled || false, type: 'boolean' },
         { key: 'security.auth.bypassHealthCheck', label: '健康检查绕过认证', value: config.security?.auth?.bypassHealthCheck !== undefined ? config.security.auth.bypassHealthCheck : true, type: 'boolean' },
         { key: 'view_api_key', label: '🔑 查看当前 API Key', value: 'view', type: 'viewkey' },
+        { key: 'security.swaggerDocs.enabled', label: '启用 Swagger 文档', value: config.security?.swaggerDocs?.enabled !== false, type: 'boolean' },
         { key: 'allowDangerouslySkipPermissions', label: '跳过权限检查', value: config.allowDangerouslySkipPermissions || false, type: 'boolean' },
       ]
     },
