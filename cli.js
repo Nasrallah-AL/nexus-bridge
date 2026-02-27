@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { generateSecretKey, deriveApiKey } = require('./src/utils/keyGenerator');
 
 // 配置目录和文件
 const configDir = path.join(process.env.HOME || os.homedir(), '.claude-code-server');
@@ -47,7 +48,14 @@ const defaultConfig = {
     configPath: null
   },
   logLevel: 'info',
-  allowDangerouslySkipPermissions: false
+  allowDangerouslySkipPermissions: false,
+  security: {
+    auth: {
+      enabled: false,
+      secretKey: null,
+      bypassHealthCheck: true
+    }
+  }
 };
 
 // 确保配置目录存在并加载配置
@@ -534,6 +542,89 @@ async function configureSettings() {
     defaultTimeout: queueAnswers.timeout,
   };
 
+  // 第四部分：安全配置
+  const { enableAuth } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'enableAuth',
+      message: '启用 API 认证?',
+      default: config.security?.auth?.enabled || false,
+    },
+  ]);
+
+  // Initialize security config if not exists
+  if (!config.security) {
+    config.security = { auth: { enabled: false, secretKey: null, bypassHealthCheck: true } };
+  }
+  if (!config.security.auth) {
+    config.security.auth = { enabled: false, secretKey: null, bypassHealthCheck: true };
+  }
+
+  config.security.auth.enabled = enableAuth;
+
+  if (enableAuth) {
+    // Show current API key if exists
+    if (config.security.auth.secretKey) {
+      const currentApiKey = deriveApiKey(config.security.auth.secretKey);
+      console.log('');
+      console.log(chalk.cyan('当前 API Key:'));
+      console.log(chalk.bold.white(`  ${currentApiKey}`));
+      console.log('');
+    }
+
+    const { shouldRegenerate, bypassHealthCheck } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'shouldRegenerate',
+        message: '重新生成 API Key?',
+        default: false,
+      },
+      {
+        type: 'confirm',
+        name: 'bypassHealthCheck',
+        message: '允许健康检查跳过认证?',
+        default: config.security.auth.bypassHealthCheck !== undefined ? config.security.auth.bypassHealthCheck : true,
+      },
+    ]);
+
+    if (shouldRegenerate) {
+      const { confirmRegenerate } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirmRegenerate',
+          message: chalk.yellow('确认重新生成? 旧的 API Key 将立即失效!'),
+          default: false,
+        },
+      ]);
+
+      if (confirmRegenerate) {
+        config.security.auth.secretKey = generateSecretKey();
+        const newApiKey = deriveApiKey(config.security.auth.secretKey);
+        console.log('');
+        console.log(chalk.green('✓ 新的 API Key 已生成'));
+        console.log(chalk.bold.white(`  ${newApiKey}`));
+        console.log(chalk.yellow('  请妥善保管此密钥!'));
+        console.log('');
+      }
+    } else if (!config.security.auth.secretKey) {
+      // Auto-generate if missing
+      config.security.auth.secretKey = generateSecretKey();
+      const newApiKey = deriveApiKey(config.security.auth.secretKey);
+      console.log('');
+      console.log(chalk.green('✓ 已自动生成 SECRET_KEY'));
+      console.log(chalk.bold.white(`  API Key: ${newApiKey}`));
+      console.log(chalk.yellow('  请妥善保管此密钥!'));
+      console.log('');
+    }
+
+    config.security.auth.bypassHealthCheck = bypassHealthCheck;
+  } else {
+    // Auth disabled - keep secretKey for future use
+    if (config.security.auth.bypassHealthCheck === undefined) {
+      config.security.auth.bypassHealthCheck = true;
+    }
+  }
+
   // 保存配置
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
@@ -550,6 +641,18 @@ async function configureSettings() {
     console.log(`  ${chalk.white('URL:')} ${config.webhook.defaultUrl}`);
   }
   console.log(`  ${chalk.white('任务队列:')} 并发数 ${config.taskQueue?.concurrency || 3}, 超时 ${config.taskQueue?.defaultTimeout || 300000}ms`);
+
+  // Security info
+  if (config.security?.auth?.enabled) {
+    console.log(`  ${chalk.white('API 认证:')} ${chalk.green('已启用')}`);
+    if (config.security.auth.secretKey) {
+      const apiKey = deriveApiKey(config.security.auth.secretKey);
+      console.log(`  ${chalk.white('API Key:')} ${chalk.bold.cyan(apiKey)}`);
+    }
+    console.log(`  ${chalk.white('健康检查:')} ${config.security.auth.bypassHealthCheck ? chalk.yellow('跳过认证') : chalk.gray('需要认证')}`);
+  } else {
+    console.log(`  ${chalk.white('API 认证:')} ${chalk.gray('未启用')}`);
+  }
   console.log('');
 }
 
