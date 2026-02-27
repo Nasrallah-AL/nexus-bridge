@@ -785,27 +785,39 @@ async function visualConfigEditor() {
         choices: [
           ...allItems,
           new inquirer.Separator(),
-          { name: '💾 保存配置并退出', value: 'save' },
-          { name: '🚪 放弃更改并退出', value: 'exit' },
           { name: '📄 在外部编辑器中打开配置文件', value: 'edit' },
+          { name: '✖ 完成并退出', value: 'quit' },
         ],
       },
     ]);
 
-    if (selectedItem === 'save') {
+    if (selectedItem === 'quit') {
+      // 退出前保存配置
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
       console.log('');
-      console.log(chalk.green('✓ 配置已保存到:'), configPath);
+      console.log(chalk.green('✓ 配置已保存'));
       console.log(chalk.cyan('ℹ 配置将在约 1 秒内通过热重载生效'));
-      console.log('');
-      break;
-    } else if (selectedItem === 'exit') {
-      console.log('');
-      console.log(chalk.yellow('○ 已放弃更改'));
       console.log('');
       break;
     } else if (selectedItem === 'edit') {
       await openInEditor();
+      // 编辑器关闭后，重新加载配置
+      config = loadConfig();
+      // 重新构建菜单项
+      const rebuiltItems = [];
+      configSections.forEach(section => {
+        section.items.forEach(item => {
+          const currentValue = getNestedValue(config, item.key);
+          const displayValue = formatValue(currentValue, item.type);
+          rebuiltItems.push({
+            name: `${chalk.gray(section.name)} ${chalk.white('│')} ${chalk.cyan(item.label)}: ${chalk.yellow(displayValue)}`,
+            value: item,
+            short: `${item.label} (${displayValue})`,
+          });
+        });
+      });
+      allItems.length = 0;
+      allItems.push(...rebuiltItems);
     } else {
       // Edit selected item
       // Note: selectedItem is already the item object (the value from the choice), not the choice wrapper
@@ -855,8 +867,45 @@ async function visualConfigEditor() {
         setNestedValue(config, item.key, newValue);
       }
 
-      console.log(chalk.green(`✓ ${item.label} 已更新`));
+      // 立即保存配置
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
       console.log('');
+      console.log(chalk.green(`✓ ${item.label} 已更新并保存`));
+      console.log(chalk.cyan('ℹ 配置将在约 1 秒内通过热重载生效'));
+      console.log('');
+
+      // 询问是否继续编辑
+      const { continueEdit } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'continueEdit',
+          message: '继续编辑其他配置项?',
+          default: true,
+        },
+      ]);
+
+      if (!continueEdit) {
+        console.log('');
+        console.log(chalk.green('✓ 配置已保存，退出配置编辑'));
+        console.log('');
+        break;
+      }
+
+      // 更新菜单显示（显示最新值）
+      const rebuiltItems = [];
+      configSections.forEach(section => {
+        section.items.forEach(item => {
+          const currentValue = getNestedValue(config, item.key);
+          const displayValue = formatValue(currentValue, item.type);
+          rebuiltItems.push({
+            name: `${chalk.gray(section.name)} ${chalk.white('│')} ${chalk.cyan(item.label)}: ${chalk.yellow(displayValue)}`,
+            value: item,
+            short: `${item.label} (${displayValue})`,
+          });
+        });
+      });
+      allItems.length = 0;
+      allItems.push(...rebuiltItems);
     }
   }
 }
