@@ -656,7 +656,7 @@ async function configureSettings() {
   console.log('');
 }
 
-// 可视化配置编辑器
+// 配置设置
 async function visualConfigEditor() {
   // Define all configuration sections
   const configSections = [
@@ -716,7 +716,7 @@ async function visualConfigEditor() {
 
   console.log('');
   console.log(chalk.bold.cyan('╔═══════════════════════════════════════════════════════════════╗'));
-  console.log(chalk.bold.cyan('║           📝 可视化配置编辑器                                   ║'));
+  console.log(chalk.bold.cyan('║           📝 配置设置                                   ║'));
   console.log(chalk.bold.cyan('╠═══════════════════════════════════════════════════════════════╣'));
   console.log(chalk.bold.cyan('║ 💡 使用上下键导航，Enter 编辑选中项，ESC 退出                      ║'));
   console.log(chalk.bold.cyan('╚═══════════════════════════════════════════════════════════════╝'));
@@ -751,8 +751,6 @@ async function visualConfigEditor() {
           { name: '💾 保存配置并退出', value: 'save' },
           { name: '🚪 放弃更改并退出', value: 'exit' },
           { name: '📄 在外部编辑器中打开配置文件', value: 'edit' },
-          new inquirer.Separator(),
-          { name: '◀ 返回主菜单', value: 'back' },
         ],
       },
     ]);
@@ -769,14 +767,12 @@ async function visualConfigEditor() {
       console.log(chalk.yellow('○ 已放弃更改'));
       console.log('');
       break;
-    } else if (selectedItem === 'back') {
-      console.log('');
-      break;
     } else if (selectedItem === 'edit') {
       await openInEditor();
     } else {
       // Edit selected item
-      const item = selectedItem.value;
+      // Note: selectedItem is already the item object (the value from the choice), not the choice wrapper
+      const item = selectedItem;
       const currentValue = getNestedValue(config, item.key);
 
       if (item.type === 'boolean') {
@@ -1578,8 +1574,7 @@ async function mainMenu() {
         { name: '📋 任务列表', value: 'tasks', disabled: !running ? '服务未运行' : false },
         { name: '📋 查看日志 (tail -f)', value: 'logs', disabled: !fs.existsSync(logFile) ? '无日志文件' : false },
         { name: '📖 查看接口文档', value: 'docs' },
-        { name: '⚙ 配置设置', value: 'config' },
-        { name: '📝 可视化配置编辑器', value: 'visualConfig' },
+        { name: '📝 配置设置', value: 'visualConfig' },
         { name: '🧪 测试 API', value: 'test', disabled: !running ? '服务未运行' : false },
         { name: '✖ 退出', value: 'exit' },
       ],
@@ -1610,9 +1605,6 @@ async function mainMenu() {
       break;
     case 'docs':
       await showApiDocs();
-      break;
-    case 'config':
-      await configureSettings();
       break;
     case 'visualConfig':
       await visualConfigEditor();
