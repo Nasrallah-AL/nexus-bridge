@@ -244,34 +244,39 @@ async function main() {
   app.use('/api/tasks', createTaskRoutes(taskQueue));
 
   // Swagger API Documentation
-  if (config.security?.swaggerDocs?.enabled !== false) {
-    const swaggerUi = require('swagger-ui-express');
-    const swaggerSpec = require('./swagger-config');
+  const swaggerUi = require('swagger-ui-express');
+  const swaggerSpec = require('./swagger-config');
 
-    // Serve Swagger UI
-    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-      customSiteTitle: 'Claude Code Server API Documentation',
-      customCss: '.swagger-ui .topbar { display: none }',
-      swaggerOptions: {
-        persistAuthorization: true,
-        displayRequestDuration: true,
-        docExpansion: 'list',
-        filter: true,
-        showRequestHeaders: true,
-        tryItOutEnabled: true
-      }
-    }));
+  // Middleware to check if Swagger docs are enabled
+  const swaggerDocsMiddleware = (req, res, next) => {
+    if (config.security?.swaggerDocs?.enabled === false) {
+      return res.status(404).json({ error: 'Not Found', message: 'Swagger Documentation is disabled' });
+    }
+    next();
+  };
 
-    // Serve raw OpenAPI JSON spec
-    app.get('/api-docs.json', (req, res) => {
-      res.setHeader('Content-Type', 'application/json');
-      res.send(swaggerSpec);
-    });
+  // Serve Swagger UI (with middleware check)
+  app.use('/api-docs', swaggerDocsMiddleware, swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: 'Claude Code Server API Documentation',
+    customCss: '.swagger-ui .topbar { display: none }',
+    swaggerOptions: {
+      persistAuthorization: true,
+      displayRequestDuration: true,
+      docExpansion: 'list',
+      filter: true,
+      showRequestHeaders: true,
+      tryItOutEnabled: true
+    }
+  }));
 
-    logger.info('Swagger Documentation: enabled at /api-docs');
-  } else {
-    logger.info('Swagger Documentation: disabled');
-  }
+  // Serve raw OpenAPI JSON spec (with middleware check)
+  app.get('/api-docs.json', swaggerDocsMiddleware, (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+  });
+
+  const swaggerDocsStatus = config.security?.swaggerDocs?.enabled === false ? 'disabled' : 'enabled';
+  logger.info(`Swagger Documentation: ${swaggerDocsStatus} at /api-docs (hot-reload enabled)`);
 
   // 配置热重载
   let configWatcher = null;
@@ -306,7 +311,7 @@ async function main() {
       }
       if (newConfig.security?.swaggerDocs?.enabled !== config.security?.swaggerDocs?.enabled) {
         configChanges.push(`security.swaggerDocs.enabled: ${config.security?.swaggerDocs?.enabled} → ${newConfig.security?.swaggerDocs?.enabled}`);
-        configChanges.push(`注意: Swagger 路由变更需要重启服务器生效`);
+        configChanges.push(`Swagger 文档访问: ${newConfig.security.swaggerDocs.enabled === false ? '已禁用' : '已启用'} (实时生效)`);
       }
 
       // 更新配置对象（保留引用）
