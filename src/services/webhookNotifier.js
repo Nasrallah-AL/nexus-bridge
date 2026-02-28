@@ -143,6 +143,21 @@ class WebhookNotifier {
   }
 
   /**
+   * 任务开始处理通知
+   */
+  async notifyTaskStarted(taskId, taskData = {}) {
+    return await this.notify('task.started', {
+      task_id: taskId,
+      status: 'processing',
+      prompt: taskData.prompt,
+      model: taskData.model,
+      project_path: taskData.project_path,
+      priority: taskData.priority,
+      created_at: taskData.created_at,
+    });
+  }
+
+  /**
    * 会话创建通知
    */
   async notifySessionCreated(sessionId, sessionData) {

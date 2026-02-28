@@ -156,6 +156,27 @@ class TaskQueue extends EventEmitter {
     const metadata = task.metadata || {};
     const webhookUrl = metadata.webhook_url;
 
+    // 发送任务开始处理的 webhook 通知
+    if (this.webhookNotifier) {
+      const taskData = {
+        prompt: task.prompt,
+        model: task.model,
+        project_path: task.project_path,
+        priority: task.priority,
+        created_at: task.created_at,
+      };
+
+      if (webhookUrl) {
+        await this.webhookNotifier.sendCustomNotification('task.started', {
+          task_id: taskId,
+          status: 'processing',
+          ...taskData,
+        }, webhookUrl);
+      } else {
+        await this.webhookNotifier.notifyTaskStarted(taskId, taskData);
+      }
+    }
+
     // 创建任务超时
     const timeout = setTimeout(async () => {
       this.logger.warn('Task timeout', { task_id: taskId });
