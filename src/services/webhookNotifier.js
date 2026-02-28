@@ -15,6 +15,30 @@ class WebhookNotifier {
   }
 
   /**
+   * 更新配置（热重载）
+   */
+  updateConfig(newConfig) {
+    const oldEnabled = this.enabled;
+    const oldUrl = this.defaultUrl;
+
+    this.config = newConfig;
+    this.enabled = newConfig.webhook?.enabled || false;
+    this.defaultUrl = newConfig.webhook?.defaultUrl;
+    this.timeout = newConfig.webhook?.timeout || 5000;
+    this.maxRetries = newConfig.webhook?.retries || 3;
+
+    // 记录配置变化
+    if (oldEnabled !== this.enabled || oldUrl !== this.defaultUrl) {
+      this.logger.info('Webhook 配置已更新', {
+        enabled: this.enabled,
+        defaultUrl: this.defaultUrl ? '(已配置)' : '(未配置)',
+        timeout: this.timeout,
+        maxRetries: this.maxRetries,
+      });
+    }
+  }
+
+  /**
    * 发送 webhook 通知
    */
   async notify(event, data, options = {}) {

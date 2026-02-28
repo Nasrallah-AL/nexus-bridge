@@ -301,10 +301,14 @@ async function main() {
       if (newConfig.rateLimit?.enabled !== config.rateLimit?.enabled) {
         configChanges.push(`rateLimit.enabled: ${config.rateLimit?.enabled} → ${newConfig.rateLimit?.enabled}`);
       }
-      if (newConfig.webhook?.enabled !== config.webhook?.enabled) {
+      if (newConfig.webhook?.enabled !== config.webhook?.enabled ||
+          newConfig.webhook?.defaultUrl !== config.webhook?.defaultUrl) {
         configChanges.push(`webhook.enabled: ${config.webhook?.enabled} → ${newConfig.webhook?.enabled}`);
-        // 更新 WebhookNotifier
-        webhookNotifier.config = newConfig;
+        if (newConfig.webhook?.defaultUrl !== config.webhook?.defaultUrl) {
+          configChanges.push(`webhook.defaultUrl: ${config.webhook?.defaultUrl || '(未设置)'} → ${newConfig.webhook?.defaultUrl || '(未设置)'}`);
+        }
+        // 更新 WebhookNotifier 配置
+        webhookNotifier.updateConfig(newConfig);
       }
       if (newConfig.logLevel !== config.logLevel) {
         configChanges.push(`logLevel: ${config.logLevel} → ${newConfig.logLevel}`);
