@@ -1,6 +1,7 @@
 const SessionStore = require('../storage/sessionStore');
 const ClaudeExecutor = require('./claudeExecutor');
 const getLogger = require('../utils/logger');
+const Validators = require('../utils/validators');
 
 /**
  * 会话管理服务
@@ -53,10 +54,23 @@ class SessionManager {
       };
     }
 
+    // 验证并解析项目路径（处理可能存储了错误路径的旧 session）
+    const pathValidation = Validators.validateProjectPath(
+      session.project_path,
+      this.config.workspacePath
+    );
+
+    if (!pathValidation.valid) {
+      return {
+        success: false,
+        error: pathValidation.error,
+      };
+    }
+
     // 使用会话的配置执行 Claude
     const result = await this.claudeExecutor.execute({
       prompt: options.prompt,
-      projectPath: session.project_path,
+      projectPath: pathValidation.fullPath,  // 使用解析后的完整路径
       model: options.model || session.model,
       sessionId: session.id,
       systemPrompt: options.systemPrompt,

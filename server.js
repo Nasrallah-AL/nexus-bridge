@@ -16,7 +16,7 @@ const defaultConfig = {
   host: '0.0.0.0',
   claudePath: path.join(process.env.HOME || os.homedir(), '.nvm', 'versions', 'node', 'v22.21.0', 'bin', 'claude'),
   nvmBin: path.join(process.env.HOME || os.homedir(), '.nvm', 'versions', 'node', 'v22.21.0', 'bin'),
-  defaultProjectPath: path.join(process.env.HOME || os.homedir(), 'workspace'),
+  workspacePath: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'workspace'),
   logFile: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'logs', 'server.log'),
   pidFile: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'server.pid'),
   dataDir: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'data'),
@@ -118,6 +118,41 @@ async function loadConfig() {
 
   // 保存诊断信息用于日志输出
   config._pathDetection = { updates, warnings };
+
+  // 兼容旧配置：如果有 defaultProjectPath，迁移到 workspacePath
+  if (config.defaultProjectPath) {
+    if (!config.workspacePath) {
+      config.workspacePath = config.defaultProjectPath;
+    }
+    delete config.defaultProjectPath;
+    // 保存更新后的配置
+    try {
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      console.log(`✅ 已迁移 defaultProjectPath → workspacePath`);
+    } catch (err) {
+      console.error(`❌ 更新配置失败:`, err.message);
+    }
+  }
+
+  // 展开 workspacePath 中的 ~ 符号
+  if (config.workspacePath && config.workspacePath.startsWith('~')) {
+    config.workspacePath = path.join(os.homedir(), config.workspacePath.substring(2));
+  }
+
+  // 确保 workspacePath 存在，不存在则使用默认值
+  if (!config.workspacePath) {
+    config.workspacePath = path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'workspace');
+  }
+
+  // 确保工作空间目录存在
+  if (!fs.existsSync(config.workspacePath)) {
+    try {
+      fs.mkdirSync(config.workspacePath, { recursive: true });
+      console.log(`✅ 已创建工作空间目录: ${config.workspacePath}`);
+    } catch (err) {
+      console.error(`❌ 创建工作空间目录失败:`, err.message);
+    }
+  }
 
   // Environment variable overrides (take precedence)
   if (process.env.CCS_SECRET_KEY) {
@@ -292,6 +327,12 @@ async function main() {
 
       // 检查关键配置变化
       const configChanges = [];
+
+      // workspacePath 变化检测
+      if (newConfig.workspacePath !== config.workspacePath) {
+        configChanges.push(`workspacePath: ${config.workspacePath} → ${newConfig.workspacePath}`);
+      }
+
       if (newConfig.taskQueue?.concurrency !== config.taskQueue?.concurrency) {
         configChanges.push(`taskQueue.concurrency: ${config.taskQueue?.concurrency} → ${newConfig.taskQueue?.concurrency}`);
         // 更新 TaskQueue 并发数

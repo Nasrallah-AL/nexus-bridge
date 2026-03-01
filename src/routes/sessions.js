@@ -92,8 +92,24 @@ function createSessionRoutes(sessionManager) {
       });
     }
 
+    // 验证并解析项目路径（必须在工作空间下）
+    const pathValidation = Validators.validateProjectPath(
+      validation.value.project_path,
+      sessionManager.config.workspacePath
+    );
+
+    if (!pathValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: pathValidation.error,
+      });
+    }
+
     try {
-      const session = await sessionManager.createSession(validation.value);
+      const session = await sessionManager.createSession({
+        ...validation.value,
+        project_path: pathValidation.fullPath,  // 使用解析后的完整路径
+      });
       res.status(201).json({
         success: true,
         session,

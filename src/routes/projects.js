@@ -289,6 +289,134 @@ function createProjectsRoutes(sessionStore, config) {
    *               success: false
    *               error: "Failed to retrieve statistics"
    */
+  /**
+   * @swagger
+   * /api/projects/{path}:
+   *   delete:
+   *     summary: Delete a project and its sessions
+   *     description: |
+   *       Delete all sessions associated with a project path.
+   *       This removes the project from the project list and deletes all related session data.
+   *       Note: This does NOT delete the actual project files/directory on the server.
+   *     tags: [Projects]
+   *     parameters:
+   *       - name: path
+   *         in: path
+   *         description: |
+   *           Project path (URL encoded).
+   *           Use the full project_path from the project list.
+   *         required: true
+   *         schema:
+   *           type: string
+   *         example: "/home/user/.claude-code-server/workspace/my-project"
+   *     responses:
+   *       '200':
+   *         description: Project deleted successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 message:
+   *                   type: string
+   *                   example: "Project deleted successfully"
+   *                 deleted_sessions:
+   *                   type: integer
+   *                   description: Number of sessions deleted
+   *                   example: 5
+   *                 project_path:
+   *                   type: string
+   *                   example: "/home/user/.claude-code-server/workspace/my-project"
+   *             example:
+   *               success: true
+   *               message: "Project deleted successfully"
+   *               deleted_sessions: 5
+   *               project_path: "/home/user/.claude-code-server/workspace/my-project"
+   *       '400':
+   *         description: Invalid request
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Project path is required"
+   *       '404':
+   *         description: Project not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "No sessions found for this project"
+   *       '500':
+   *         description: Server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *             example:
+   *               success: false
+   *               error: "Failed to delete project"
+   */
+  // DELETE /api/projects/:path* - 删除项目及其 sessions（不删除文件）
+  router.delete('/*', async (req, res) => {
+    try {
+      // 获取项目路径（处理路径中的斜杠）
+      const projectPath = decodeURIComponent(req.params[0] || '');
+
+      if (!projectPath) {
+        return res.status(400).json({
+          success: false,
+          error: 'Project path is required',
+        });
+      }
+
+      // 获取所有 sessions
+      const sessions = await sessionStore.list();
+
+      // 筛选该项目路径下的 sessions
+      const projectSessions = sessions.filter(
+        session => (session.project_path || config.workspacePath) === projectPath
+      );
+
+      if (projectSessions.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'No sessions found for this project',
+          project_path: projectPath,
+        });
+      }
+
+      // 删除所有相关 sessions
+      let deletedCount = 0;
+      for (const session of projectSessions) {
+        try {
+          await sessionStore.delete(session.id);
+          deletedCount++;
+        } catch (err) {
+          console.error(`Failed to delete session ${session.id}:`, err.message);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: 'Project deleted successfully',
+        deleted_sessions: deletedCount,
+        project_path: projectPath,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  });
+
   // GET /api/projects/stats - 获取项目统计
   router.get('/stats', async (req, res) => {
     try {
