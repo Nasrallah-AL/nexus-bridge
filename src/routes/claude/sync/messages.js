@@ -1,0 +1,105 @@
+const router = require('express').Router();
+const { validateAndParseRequest } = require('../common/validators');
+const { ensureSession } = require('../common/session');
+
+/**
+ * @swagger
+ * /api/messages:
+ *   post:
+ *     summary: Send message to Claude (Synchronous)
+ *     description: |
+ *       Send a prompt to Claude CLI and get the response synchronously.
+ *       Automatically creates sessions for multi-turn conversations.
+ *       Returns the result immediately after execution.
+ *     tags: [Messages]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - prompt
+ *             properties:
+ *               prompt:
+ *                 type: string
+ *                 example: "Explain what HTTP is"
+ *               project_path:
+ *                 type: string
+ *                 example: "/Users/john/my-project"
+ *               session_id:
+ *                 type: string
+ *                 format: uuid
+ *                 example: "550e8400-e29b-41d4-a716-446655440000"
+ *               model:
+ *                 type: string
+ *                 example: "claude-sonnet-4-5"
+ *               max_budget_usd:
+ *                 type: number
+ *                 minimum: 0
+ *                 example: 10.0
+ *               stream:
+ *                 type: boolean
+ *                 default: false
+ *     responses:
+ *       '200':
+ *         description: Successful execution
+ *       '400':
+ *         description: Invalid request
+ *       '500':
+ *         description: Server error
+ *       '501':
+ *         description: Feature not implemented (streaming)
+ */
+function createMessagesRoute(claudeExecutor, config, sessionManager) {
+  router.post('/', async (req, res) => {
+    // 使用公共验证逻辑
+    const validated = validateAndParseRequest(req, res, config);
+    if (!validated) return; // 验证失败，响应已发送
+
+    // 流式输出暂不支持
+    if (validated.stream) {
+      return res.status(501).json({
+        success: false,
+        error: 'Streaming is not yet implemented',
+      });
+    }
+
+    // 确保 Session 存在
+    const sessionId = await ensureSession(
+      sessionManager,
+      validated.sessionId,
+      validated.projectPath,
+      validated.model,
+      config
+    );
+
+    // 同步执行
+    const result = await claudeExecutor.execute({
+      prompt: validated.prompt,
+      projectPath: validated.projectPath,
+      model: validated.model,
+      sessionId: sessionId,
+      systemPrompt: validated.systemPrompt,
+      maxBudgetUsd: validated.maxBudgetUsd,
+      allowedTools: validated.allowedTools,
+      disallowedTools: validated.disallowedTools,
+      agent: validated.agent,
+      mcpConfig: validated.mcpConfig,
+      stream: validated.stream,
+    });
+
+    // 返回结果（包含 session_id）
+    const statusCode = result.success ? 200 : 500;
+    const responseData = result.success ? {
+      ...result,
+      session_id: sessionId,
+    } : result;
+
+    res.status(statusCode).json(responseData);
+  });
+
+  return router;
+}
+
+module.exports = createMessagesRoute;
