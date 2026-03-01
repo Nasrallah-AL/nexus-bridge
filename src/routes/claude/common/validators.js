@@ -1,4 +1,4 @@
-const Validators = require('../../utils/validators');
+const Validators = require('../../../utils/validators');
 
 /**
  * 统一的请求验证和解析

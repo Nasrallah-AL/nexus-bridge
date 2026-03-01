@@ -72,7 +72,7 @@ const router = require('express').Router();
  */
 function createBatchesRoute(claudeExecutor, config) {
   router.post('/', async (req, res) => {
-    const { validateBatchRequest, validateProjectPath } = require('../../utils/validators');
+    const { validateBatchRequest, validateProjectPath } = require('../../../utils/validators');
 
     // 验证请求
     const validation = validateBatchRequest(req.body);
