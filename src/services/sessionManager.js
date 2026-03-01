@@ -7,10 +7,11 @@ const Validators = require('../utils/validators');
  * 会话管理服务
  */
 class SessionManager {
-  constructor(config, sessionStore, claudeExecutor) {
+  constructor(config, sessionStore, claudeExecutor, messageStore = null) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.claudeExecutor = claudeExecutor;
+    this.messageStore = messageStore;
     this.logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
   }
 
@@ -103,6 +104,18 @@ class SessionManager {
   async deleteSession(sessionId) {
     const deleted = await this.sessionStore.delete(sessionId);
     if (deleted) {
+      // 同时删除消息文件
+      if (this.messageStore) {
+        try {
+          await this.messageStore.deleteMessages(sessionId);
+          this.logger.info(`Messages deleted for session`, { session_id: sessionId });
+        } catch (err) {
+          this.logger.warn(`Failed to delete messages for session`, {
+            session_id: sessionId,
+            error: err.message,
+          });
+        }
+      }
       this.logger.info(`Session deleted`, { session_id: sessionId });
       return { success: true };
     }

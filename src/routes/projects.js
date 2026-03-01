@@ -1,7 +1,7 @@
 /**
  * 创建项目路由
  */
-function createProjectsRoutes(sessionStore, config) {
+function createProjectsRoutes(sessionStore, config, messageStore = null) {
   const router = require('express').Router();
   const path = require('path');
 
@@ -392,12 +392,23 @@ function createProjectsRoutes(sessionStore, config) {
         });
       }
 
-      // 删除所有相关 sessions
+      // 删除所有相关 sessions 和消息
       let deletedCount = 0;
+      let deletedMessages = 0;
       for (const session of projectSessions) {
         try {
           await sessionStore.delete(session.id);
           deletedCount++;
+
+          // 删除消息文件
+          if (messageStore) {
+            try {
+              await messageStore.deleteMessages(session.id);
+              deletedMessages++;
+            } catch (msgErr) {
+              console.error(`Failed to delete messages for session ${session.id}:`, msgErr.message);
+            }
+          }
         } catch (err) {
           console.error(`Failed to delete session ${session.id}:`, err.message);
         }
@@ -407,6 +418,7 @@ function createProjectsRoutes(sessionStore, config) {
         success: true,
         message: 'Project deleted successfully',
         deleted_sessions: deletedCount,
+        deleted_messages: deletedMessages,
         project_path: projectPath,
       });
     } catch (error) {

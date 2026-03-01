@@ -206,6 +206,7 @@ async function main() {
     './src/storage/sessionStore',
     './src/storage/taskStore',
     './src/storage/statsStore',
+    './src/storage/messageStore',
   ];
 
   modulePaths.forEach(modPath => {
@@ -216,10 +217,12 @@ async function main() {
   const SessionStore = require('./src/storage/sessionStore');
   const TaskStore = require('./src/storage/taskStore');
   const StatsStore = require('./src/storage/statsStore');
+  const MessageStore = require('./src/storage/messageStore');
 
   const sessionStore = new SessionStore(config.dataDir + '/sessions');
   const taskStore = new TaskStore(config.dataDir + '/tasks');
   const statsStore = new StatsStore(config.dataDir + '/statistics');
+  const messageStore = new MessageStore(config.dataDir + '/messages');
 
   // 初始化服务
   const ClaudeExecutor = require('./src/services/claudeExecutor');
@@ -230,8 +233,8 @@ async function main() {
   const WebhookNotifier = require('./src/services/webhookNotifier');
   const AuditLogger = require('./src/services/auditLogger');
 
-  const claudeExecutor = new ClaudeExecutor(config, sessionStore, statsStore);
-  const sessionManager = new SessionManager(config, sessionStore, claudeExecutor);
+  const claudeExecutor = new ClaudeExecutor(config, sessionStore, statsStore, messageStore);
+  const sessionManager = new SessionManager(config, sessionStore, claudeExecutor, messageStore);
   const rateLimiter = new RateLimiter(config);
   const statisticsCollector = new StatisticsCollector(config, statsStore);
   const webhookNotifier = new WebhookNotifier(config);
@@ -273,8 +276,8 @@ async function main() {
   app.use('/api/messages', createClaudeRoutes(claudeExecutor, config, null, sessionManager));
   // Asynchronous message processing
   app.use('/api/async/messages', createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager));
-  app.use('/api/sessions', createSessionRoutes(sessionManager));
-  app.use('/api/projects', createProjectsRoutes(sessionStore, config));
+  app.use('/api/sessions', createSessionRoutes(sessionManager, messageStore));
+  app.use('/api/projects', createProjectsRoutes(sessionStore, config, messageStore));
   app.use('/api/statistics', createStatisticsRoutes(statisticsCollector));
   app.use('/api/tasks', createTaskRoutes(taskQueue));
 
@@ -412,6 +415,7 @@ async function main() {
     await sessionStore.init();
     await taskStore.init();
     await statsStore.init();
+    await messageStore.init();
 
     const logger = require('./src/utils/logger')({ logFile: config.logFile, logLevel: config.logLevel });
     logger.info(`Claude Code Server started on http://${HOST}:${PORT}`);

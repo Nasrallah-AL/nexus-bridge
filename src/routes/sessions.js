@@ -3,7 +3,7 @@ const Validators = require('../utils/validators');
 /**
  * 创建会话路由
  */
-function createSessionRoutes(sessionManager) {
+function createSessionRoutes(sessionManager, messageStore = null) {
   const router = require('express').Router();
 
   /**
@@ -478,6 +478,170 @@ function createSessionRoutes(sessionManager) {
       } else {
         res.status(500).json(result);
       }
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/sessions/{id}/messages:
+   *   get:
+   *     summary: Get session message history
+   *     description: |
+   *       Retrieve message history for a specific session with cursor-based pagination.
+   *       Supports both forward and backward pagination using before_id/after_id cursors.
+   *     tags: [Sessions]
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         description: Session UUID
+   *         required: true
+   *         schema:
+   *           type: string
+   *           format: uuid
+   *         example: "550e8400-e29b-41d4-a716-446655440000"
+   *       - name: limit
+   *         in: query
+   *         description: Number of messages per page (max 100)
+   *         required: false
+   *         schema:
+   *           type: integer
+   *           minimum: 1
+   *           maximum: 100
+   *           default: 20
+   *         example: 20
+   *       - name: before_id
+   *         in: query
+   *         description: Get messages before this message ID (for backward pagination)
+   *         required: false
+   *         schema:
+   *           type: string
+   *         example: "msg_abc123"
+   *       - name: after_id
+   *         in: query
+   *         description: Get messages after this message ID (for forward pagination)
+   *         required: false
+   *         schema:
+   *           type: string
+   *         example: "msg_def456"
+   *       - name: order
+   *         in: query
+   *         description: Sort order by time
+   *         required: false
+   *         schema:
+   *           type: string
+   *           enum: [asc, desc]
+   *           default: desc
+   *         example: "desc"
+   *     responses:
+   *       '200':
+   *         description: Messages retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 session_id:
+   *                   type: string
+   *                   format: uuid
+   *                 messages:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id:
+   *                         type: string
+   *                         example: "msg_abc123"
+   *                       role:
+   *                         type: string
+   *                         enum: [user, assistant]
+   *                       content:
+   *                         type: string
+   *                       created_at:
+   *                         type: string
+   *                         format: date-time
+   *                       metadata:
+   *                         type: object
+   *                 pagination:
+   *                   type: object
+   *                   properties:
+   *                     has_more:
+   *                       type: boolean
+   *                     first_id:
+   *                       type: string
+   *                     last_id:
+   *                       type: string
+   *                 count:
+   *                   type: integer
+   *       '404':
+   *         description: Session not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   *       '500':
+   *         description: Server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/ErrorResponse'
+   */
+  // GET /api/sessions/:id/messages - 获取会话消息历史
+  router.get('/:id/messages', async (req, res) => {
+    // 检查 messageStore 是否可用
+    if (!messageStore) {
+      return res.status(501).json({
+        success: false,
+        error: 'Message history feature is not available',
+      });
+    }
+
+    try {
+      // 检查 session 是否存在
+      const session = await sessionManager.getSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({
+          success: false,
+          error: 'Session not found',
+        });
+      }
+
+      // 解析分页参数
+      const options = {
+        limit: req.query.limit ? parseInt(req.query.limit) : 20,
+        before_id: req.query.before_id,
+        after_id: req.query.after_id,
+        order: req.query.order || 'desc',
+      };
+
+      // 验证参数
+      if (options.limit < 1 || options.limit > 100) {
+        return res.status(400).json({
+          success: false,
+          error: 'limit must be between 1 and 100',
+        });
+      }
+
+      if (!['asc', 'desc'].includes(options.order)) {
+        return res.status(400).json({
+          success: false,
+          error: 'order must be asc or desc',
+        });
+      }
+
+      const result = await messageStore.getMessages(req.params.id, options);
+
+      res.json({
+        success: true,
+        ...result,
+      });
     } catch (error) {
       res.status(500).json({
         success: false,

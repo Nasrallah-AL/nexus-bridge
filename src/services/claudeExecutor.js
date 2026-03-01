@@ -5,10 +5,11 @@ const getLogger = require('../utils/logger');
  * Claude 执行器
  */
 class ClaudeExecutor {
-  constructor(config, sessionStore = null, statsStore = null) {
+  constructor(config, sessionStore = null, statsStore = null, messageStore = null) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.statsStore = statsStore;
+    this.messageStore = messageStore;
     this.logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
   }
 
@@ -189,6 +190,40 @@ class ClaudeExecutor {
       if (this.sessionStore && sessionId) {
         await this.sessionStore.addCost(sessionId, costUsd);
         await this.sessionStore.incrementMessages(sessionId);
+      }
+
+      // 保存消息到消息存储
+      if (this.messageStore && sessionId) {
+        try {
+          await this.messageStore.addExchange(
+            sessionId,
+            {
+              content: prompt,
+              metadata: {
+                prompt,
+                project_path: projectPath,
+                model,
+              },
+            },
+            {
+              content: result.result,
+              metadata: {
+                cost_usd: costUsd,
+                duration_ms: duration,
+                model,
+                usage: result.usage,
+                raw_response: result,
+              },
+            }
+          );
+          this.logger.debug(`Messages saved for session`, { session_id: sessionId });
+        } catch (msgErr) {
+          // 消息存储失败不影响主流程
+          this.logger.warn(`Failed to save messages for session`, {
+            session_id: sessionId,
+            error: msgErr.message,
+          });
+        }
       }
 
       return {
