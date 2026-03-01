@@ -192,34 +192,24 @@ class ClaudeExecutor {
         await this.sessionStore.incrementMessages(sessionId);
       }
 
-      // 保存消息到消息存储
+      // 保存 AI 回复到消息存储（用户消息已在路由层保存）
       if (this.messageStore && sessionId) {
         try {
-          await this.messageStore.addExchange(
-            sessionId,
-            {
-              content: prompt,
-              metadata: {
-                prompt,
-                project_path: projectPath,
-                model,
-              },
+          await this.messageStore.addMessage(sessionId, {
+            role: 'assistant',
+            content: result.result,
+            metadata: {
+              cost_usd: costUsd,
+              duration_ms: duration,
+              model,
+              usage: result.usage,
+              raw_response: result,
             },
-            {
-              content: result.result,
-              metadata: {
-                cost_usd: costUsd,
-                duration_ms: duration,
-                model,
-                usage: result.usage,
-                raw_response: result,
-              },
-            }
-          );
-          this.logger.debug(`Messages saved for session`, { session_id: sessionId });
+          });
+          this.logger.debug(`AI response saved for session`, { session_id: sessionId });
         } catch (msgErr) {
           // 消息存储失败不影响主流程
-          this.logger.warn(`Failed to save messages for session`, {
+          this.logger.warn(`Failed to save AI response for session`, {
             session_id: sessionId,
             error: msgErr.message,
           });

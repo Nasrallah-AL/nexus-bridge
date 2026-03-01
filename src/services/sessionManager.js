@@ -68,6 +68,28 @@ class SessionManager {
       };
     }
 
+    // 先保存用户消息（在执行前）
+    if (this.messageStore && sessionId) {
+      try {
+        await this.messageStore.addMessage(sessionId, {
+          role: 'user',
+          content: options.prompt,
+          metadata: {
+            prompt: options.prompt,
+            project_path: session.project_path,
+            model: options.model || session.model,
+          },
+        });
+        this.logger.debug(`User message saved for session`, { session_id: sessionId });
+      } catch (msgErr) {
+        // 消息存储失败不影响主流程
+        this.logger.warn(`Failed to save user message for session`, {
+          session_id: sessionId,
+          error: msgErr.message,
+        });
+      }
+    }
+
     // 使用会话的配置执行 Claude
     const result = await this.claudeExecutor.execute({
       prompt: options.prompt,

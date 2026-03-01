@@ -74,6 +74,24 @@ function createMessagesRoute(claudeExecutor, config, sessionManager) {
       config
     );
 
+    // 先保存用户消息（在执行前）
+    if (sessionManager?.messageStore && sessionId) {
+      try {
+        await sessionManager.messageStore.addMessage(sessionId, {
+          role: 'user',
+          content: validated.prompt,
+          metadata: {
+            prompt: validated.prompt,
+            project_path: validated.projectPath,
+            model: validated.model,
+          },
+        });
+      } catch (msgErr) {
+        // 消息存储失败不影响主流程
+        console.error('Failed to save user message:', msgErr.message);
+      }
+    }
+
     // 同步执行
     const result = await claudeExecutor.execute({
       prompt: validated.prompt,
