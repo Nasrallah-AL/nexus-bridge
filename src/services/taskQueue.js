@@ -149,8 +149,8 @@ class TaskQueue extends EventEmitter {
   async executeTask(task) {
     const taskId = task.id;
 
-    // 添加到活跃任务列表（用于并发控制）
-    this.activeTasks.set(taskId, { task, startedAt: Date.now() });
+    // 添加到活跃任务列表（用于并发控制和进程管理）
+    this.activeTasks.set(taskId, { task, childProcess: null, startedAt: Date.now() });
 
     // 从 metadata 中提取参数
     const metadata = task.metadata || {};
@@ -210,6 +210,13 @@ class TaskQueue extends EventEmitter {
         disallowedTools: metadata.disallowed_tools,
         agent: metadata.agent,
         mcpConfig: metadata.mcp_config,
+        onSpawn: (childProcess) => {
+          // 保存子进程引用，用于取消时终止
+          const active = this.activeTasks.get(taskId);
+          if (active) {
+            active.childProcess = childProcess;
+          }
+        },
       });
 
       // 清除超时
@@ -308,7 +315,31 @@ class TaskQueue extends EventEmitter {
       };
     }
 
-    // 如果正在执行，从活跃任务中移除
+    // 如果任务正在执行，终止进程
+    const active = this.activeTasks.get(taskId);
+    if (active && active.childProcess) {
+      const child = active.childProcess;
+
+      // 先发送 SIGTERM，优雅终止
+      child.kill('SIGTERM');
+      this.logger.info('Sent SIGTERM to task process', { task_id: taskId });
+
+      // 5秒后如果还没退出，发送 SIGKILL 强制终止
+      const killTimer = setTimeout(() => {
+        if (!child.killed) {
+          child.kill('SIGKILL');
+          this.logger.warn('Task force killed with SIGKILL', { task_id: taskId });
+        }
+      }, 5000);
+
+      // 进程退出后清除定时器
+      child.on('exit', () => {
+        clearTimeout(killTimer);
+        this.logger.info('Task process exited', { task_id: taskId });
+      });
+    }
+
+    // 从活跃任务中移除
     if (this.activeTasks.has(taskId)) {
       this.activeTasks.delete(taskId);
     }

@@ -118,7 +118,9 @@ class ClaudeExecutor {
       // 使用 spawn 异步执行
       let result;
       try {
-        result = await this.spawnCommand(projectPath, args);
+        result = await this.spawnCommand(projectPath, args, {
+          onSpawn: options.onSpawn,
+        });
       } catch (spawnErr) {
         // 如果是 "Session ID already in use" 错误，尝试使用 --resume 重试
         if (sessionId && spawnErr.message && spawnErr.message.includes('Session ID') && spawnErr.message.includes('already in use')) {
@@ -265,7 +267,9 @@ class ClaudeExecutor {
   /**
    * 使用 spawn 执行命令
    */
-  spawnCommand(projectPath, args) {
+  spawnCommand(projectPath, args, options = {}) {
+    const { onSpawn } = options;
+
     return new Promise((resolve, reject) => {
       const env = { ...process.env };
 
@@ -295,6 +299,11 @@ class ClaudeExecutor {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
+
+      // 通知调用方子进程已创建
+      if (onSpawn) {
+        onSpawn(child);
+      }
 
       let stdout = '';
       let stderr = '';
