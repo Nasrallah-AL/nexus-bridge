@@ -113,6 +113,8 @@ class Validators {
       prompt: Joi.string().required().min(1),
       system_prompt: Joi.string().allow('', null).optional(),
       max_budget_usd: Joi.number().min(0).optional(),
+      allowed_tools: Joi.array().items(Joi.string()).optional(),
+      disallowed_tools: Joi.array().items(Joi.string()).optional(),
       stream: Joi.boolean().optional(),
     });
 

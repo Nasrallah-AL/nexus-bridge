@@ -488,6 +488,113 @@ function createSessionRoutes(sessionManager, messageStore = null) {
 
   /**
    * @swagger
+   * /api/sessions/{id}/continue/stream:
+   *   post:
+   *     summary: Continue conversation with streaming output
+   *     description: |
+   *       Send a follow-up prompt and receive real-time SSE events as Claude processes the request.
+   *       Returns Server-Sent Events (SSE) with JSON payloads.
+   *     tags: [Sessions]
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         description: Session UUID
+   *         required: true
+   *         schema:
+   *           type: string
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [prompt]
+   *             properties:
+   *               prompt:
+   *                 type: string
+   *               system_prompt:
+   *                 type: string
+   *               max_budget_usd:
+   *                 type: number
+   *               allowed_tools:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *               disallowed_tools:
+   *                 type: array
+   *                 items:
+   *                   type: string
+   *     responses:
+   *       '200':
+   *         description: SSE stream
+   *         content:
+   *           text/event-stream:
+   *             schema:
+   *               type: string
+   */
+  // POST /api/sessions/:id/continue/stream - 流式继续会话
+  router.post('/:id/continue/stream', async (req, res) => {
+    const validation = Validators.validateSessionContinue(req.body);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: validation.error,
+      });
+    }
+
+    try {
+      // 检查会话是否存在
+      const session = await sessionManager.getSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({
+          success: false,
+          error: 'Session not found',
+        });
+      }
+
+      // 检查会话状态
+      if (session.status !== 'active') {
+        return res.status(400).json({
+          success: false,
+          error: `Session is not active: ${session.status}`,
+        });
+      }
+
+      // 使用流式执行器
+      const ClaudeStreamExecutor = require('../services/claudeStreamExecutor');
+      const streamExecutor = new ClaudeStreamExecutor(
+        sessionManager.config,
+        sessionManager.sessionStore,
+        sessionManager.statsStore
+      );
+
+      await streamExecutor.executeStream({
+        prompt: validation.value.prompt,
+        projectPath: session.project_path,
+        sessionId: req.params.id,
+        systemPrompt: validation.value.system_prompt,
+        maxBudgetUsd: validation.value.max_budget_usd,
+        allowedTools: validation.value.allowed_tools,
+        disallowedTools: validation.value.disallowed_tools,
+      }, res);
+
+    } catch (error) {
+      // 如果还没有发送headers，发送JSON错误
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+        });
+      } else {
+        // 已经开始流式输出，发送SSE错误
+        res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
+        res.end();
+      }
+    }
+  });
+
+  /**
+   * @swagger
    * /api/sessions/{id}/messages:
    *   get:
    *     summary: Get session message history
