@@ -19,6 +19,7 @@ Claude Code Server 是一个功能完整的 HTTP API 服务，将 Anthropic Clau
 - ⚡ **异步任务** - 基于优先级的任务队列系统
 - 📊 **统计分析** - 实时统计请求、成本和资源使用
 - 🔔 **Webhook 回调** - 异步任务完成自动通知
+- 🌊 **流式输出** - 基于 SSE 的实时 Claude 响应流
 
 ### 高级功能
 - 🎯 **任务优先级** - 支持 1-10 级优先级调度
@@ -28,6 +29,8 @@ Claude Code Server 是一个功能完整的 HTTP API 服务，将 Anthropic Clau
 - 💾 **文件存储** - 基于持久化 JSON 文件存储会话、任务和统计数据
 - ⚙ **配置热重载** - 无需重启更新配置
 - 🖥️ **TUI 管理工具** - 可视化服务器管理和监控
+- 🛑 **任务取消** - 实时取消运行中的任务
+- 💾 **消息存储** - 存储和检索对话消息
 
 ## 📦 安装
 
@@ -162,6 +165,53 @@ curl -X POST http://localhost:5546/api/messages \
 ```
 
 完整的 API 参考文档（包括所有端点、参数和响应代码），请访问位于 **http://localhost:5546/api-docs** 的**交互式 Swagger UI**。
+
+### 流式 API (SSE)
+
+使用 Server-Sent Events 获取实时流式响应：
+
+```bash
+curl -X POST http://localhost:5546/api/sessions/{session_id}/continue/stream \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "写一首关于编程的短诗"}'
+```
+
+**SSE 事件类型：**
+- `event: message` - 实时 Claude 输出片段（JSON 格式）
+- `event: done` - 执行完成，包含成本和耗时
+- `event: error` - 执行过程中发生错误
+
+**JavaScript 示例：**
+```javascript
+const eventSource = new EventSource('/api/sessions/my-session/continue/stream', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ prompt: '你好！' })
+});
+
+eventSource.addEventListener('message', (e) => {
+  console.log('输出片段:', JSON.parse(e.data));
+});
+
+eventSource.addEventListener('done', (e) => {
+  console.log('完成:', JSON.parse(e.data));
+  eventSource.close();
+});
+
+eventSource.addEventListener('error', (e) => {
+  console.error('错误:', e.data);
+  eventSource.close();
+});
+```
+
+**流式参数：**
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `prompt` | string | 用户提示（必填） |
+| `system_prompt` | string | 系统提示覆盖 |
+| `max_budget_usd` | number | 本次请求最大预算 |
+| `allowed_tools` | string[] | 允许的工具白名单 |
+| `disallowed_tools` | string[] | 禁用的工具黑名单 |
 
 ## 🖥️ TUI 管理工具
 
@@ -359,12 +409,13 @@ claude-code-server/
 │   ├── routes/              # API 路由
 │   │   ├── health.js
 │   │   ├── config.js
-│   │   ├── claude.js
-│   │   ├── sessions.js      # 会话管理
+│   │   ├── claude.js        # 同步/异步消息路由
+│   │   ├── sessions.js      # 会话管理 & 流式输出
 │   │   ├── statistics.js    # 统计查询
 │   │   └── tasks.js         # 任务管理
 │   ├── services/
 │   │   ├── claudeExecutor.js    # Claude 执行器
+│   │   ├── claudeStreamExecutor.js  # 流式执行器
 │   │   ├── sessionManager.js    # 会话管理
 │   │   ├── taskQueue.js         # 任务队列
 │   │   ├── rateLimiter.js       # 速率限制
@@ -373,7 +424,8 @@ claude-code-server/
 │   ├── storage/
 │   │   ├── sessionStore.js       # 会话存储
 │   │   ├── taskStore.js          # 任务存储
-│   │   └── statsStore.js         # 统计存储
+│   │   ├── statsStore.js         # 统计存储
+│   │   └── messageStore.js       # 消息存储
 │   └── utils/
 │       ├── logger.js
 │       └── validators.js

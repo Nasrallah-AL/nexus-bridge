@@ -19,6 +19,7 @@ Claude Code Server is a full-featured HTTP API service that wraps the Anthropic 
 - ⚡ **Async Tasks** - Priority-based task queue system
 - 📊 **Statistics & Analytics** - Real-time tracking of requests, costs, and resource usage
 - 🔔 **Webhook Callbacks** - Automatic notifications when async tasks complete
+- 🌊 **Streaming Output** - Real-time SSE streaming for Claude responses
 
 ### Advanced Features
 - 🎯 **Task Priority** - Support for priority levels 1-10 scheduling
@@ -28,6 +29,8 @@ Claude Code Server is a full-featured HTTP API service that wraps the Anthropic 
 - 💾 **File-based Storage** - Persistent JSON file storage for sessions, tasks, and statistics
 - ⚙ **Hot Config Reload** - Update configuration without server restart
 - 🖥️ **TUI Management Tool** - Visual server management and monitoring
+- 🛑 **Task Cancellation** - Cancel running tasks in real-time
+- 💾 **Message Storage** - Store and retrieve conversation messages
 
 ## 📦 Installation
 
@@ -162,6 +165,53 @@ curl -X POST http://localhost:5546/api/messages \
 ```
 
 For complete API reference including all endpoints, parameters, and response codes, please visit the **interactive Swagger UI** at **http://localhost:5546/api-docs**.
+
+### Streaming API (SSE)
+
+Get real-time streaming responses using Server-Sent Events:
+
+```bash
+curl -X POST http://localhost:5546/api/sessions/{session_id}/continue/stream \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Write a short poem about coding"}'
+```
+
+**SSE Events:**
+- `event: message` - Real-time Claude output chunks (JSON format)
+- `event: done` - Execution completed with cost and duration
+- `event: error` - Error occurred during execution
+
+**JavaScript Example:**
+```javascript
+const eventSource = new EventSource('/api/sessions/my-session/continue/stream', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ prompt: 'Hello!' })
+});
+
+eventSource.addEventListener('message', (e) => {
+  console.log('Chunk:', JSON.parse(e.data));
+});
+
+eventSource.addEventListener('done', (e) => {
+  console.log('Completed:', JSON.parse(e.data));
+  eventSource.close();
+});
+
+eventSource.addEventListener('error', (e) => {
+  console.error('Error:', e.data);
+  eventSource.close();
+});
+```
+
+**Streaming Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `prompt` | string | User prompt (required) |
+| `system_prompt` | string | System prompt override |
+| `max_budget_usd` | number | Maximum budget for this request |
+| `allowed_tools` | string[] | Whitelist of allowed tools |
+| `disallowed_tools` | string[] | Blacklist of disallowed tools |
 
 ## 🖥️ TUI Management Tool
 
@@ -359,12 +409,13 @@ claude-code-server/
 │   ├── routes/              # API routes
 │   │   ├── health.js
 │   │   ├── config.js
-│   │   ├── claude.js
-│   │   ├── sessions.js      # Session management
+│   │   ├── claude.js        # Sync/async message routes
+│   │   ├── sessions.js      # Session management & streaming
 │   │   ├── statistics.js    # Statistics query
 │   │   └── tasks.js         # Task management
 │   ├── services/
 │   │   ├── claudeExecutor.js    # Claude executor
+│   │   ├── claudeStreamExecutor.js  # Streaming executor
 │   │   ├── sessionManager.js    # Session management
 │   │   ├── taskQueue.js         # Task queue
 │   │   ├── rateLimiter.js       # Rate limiting
@@ -373,7 +424,8 @@ claude-code-server/
 │   ├── storage/
 │   │   ├── sessionStore.js       # Session storage
 │   │   ├── taskStore.js          # Task storage
-│   │   └── statsStore.js         # Statistics storage
+│   │   ├── statsStore.js         # Statistics storage
+│   │   └── messageStore.js       # Message storage
 │   └── utils/
 │       ├── logger.js
 │       └── validators.js
