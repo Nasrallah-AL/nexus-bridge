@@ -737,69 +737,99 @@ async function configureSettings() {
 
 // 配置设置
 async function visualConfigEditor() {
-  // Define all configuration sections
-  const configSections = [
+  // 两级菜单结构：一级分类 -> 配置项（按二级分类分组显示）
+  const configHierarchy = [
     {
-      name: '📦 基本配置',
-      items: [
-        { key: 'port', label: '服务端口', value: config.port, type: 'number' },
-        { key: 'host', label: '监听地址', value: config.host, type: 'string' },
-        { key: 'claudePath', label: 'Claude 路径 (默认: claude)', value: config.claudePath, type: 'string' },
-        { key: 'nodeBinDir', label: 'Node.js bin 目录 (可选)', value: config.nodeBinDir, type: 'string' },
-        { key: 'workspacePath', label: '工作空间路径', value: config.workspacePath, type: 'string' },
-        { key: 'sessionRetentionDays', label: '会话保留天数', value: config.sessionRetentionDays, type: 'number' },
-        { key: 'logLevel', label: '日志级别', value: config.logLevel || 'info', type: 'string', options: ['debug', 'info', 'warn', 'error'] },
-        { key: 'maxBudgetUsd', label: '最大预算 (USD)', value: config.maxBudgetUsd, type: 'number' },
+      name: '📦 服务器配置',
+      categories: [
+        {
+          name: '基本设置',
+          items: [
+            { key: 'port', label: '服务端口', type: 'number' },
+            { key: 'host', label: '监听地址', type: 'string' },
+            { key: 'logLevel', label: '日志级别', type: 'string', options: ['debug', 'info', 'warn', 'error'] },
+            { key: 'maxBudgetUsd', label: '最大预算 (USD)', type: 'number' },
+          ]
+        },
+        {
+          name: '路径配置',
+          items: [
+            { key: 'claudePath', label: 'Claude 路径', type: 'string' },
+            { key: 'nodeBinDir', label: 'Node.js bin 目录', type: 'string' },
+            { key: 'workspacePath', label: '工作空间路径', type: 'string' },
+          ]
+        },
+        {
+          name: '会话管理',
+          items: [
+            { key: 'sessionRetentionDays', label: '会话保留天数', type: 'number' },
+          ]
+        }
       ]
     },
     {
-      name: '🔄 Webhook 配置',
-      items: [
-        { key: 'webhook.enabled', label: '启用 Webhook', value: config.webhook?.enabled || false, type: 'boolean' },
-        { key: 'webhook.defaultUrl', label: 'Webhook URL', value: config.webhook?.defaultUrl || '', type: 'string' },
-        { key: 'webhook.timeout', label: '超时时间 (ms)', value: config.webhook?.timeout || 5000, type: 'number' },
-        { key: 'webhook.retries', label: '重试次数', value: config.webhook?.retries || 3, type: 'number' },
-      ]
-    },
-    {
-      name: '📋 任务队列配置',
-      items: [
-        { key: 'taskQueue.concurrency', label: '队列并发数 (1-10)', value: config.taskQueue?.concurrency || 3, type: 'number' },
-        { key: 'taskQueue.defaultTimeout', label: '任务超时 (ms)', value: config.taskQueue?.defaultTimeout || 300000, type: 'number' },
-      ]
-    },
-    {
-      name: '⚡ 速率限制配置',
-      items: [
-        { key: 'rateLimit.enabled', label: '启用速率限制', value: config.rateLimit?.enabled || false, type: 'boolean' },
-        { key: 'rateLimit.windowMs', label: '时间窗口 (ms)', value: config.rateLimit?.windowMs || 60000, type: 'number' },
-        { key: 'rateLimit.maxRequests', label: '最大请求数', value: config.rateLimit?.maxRequests || 100, type: 'number' },
-      ]
-    },
-    {
-      name: '📊 统计配置',
-      items: [
-        { key: 'statistics.enabled', label: '启用统计收集', value: config.statistics?.enabled || false, type: 'boolean' },
-        { key: 'statistics.collectionInterval', label: '采集间隔 (ms)', value: config.statistics?.collectionInterval || 60000, type: 'number' },
+      name: '⚙️ 功能配置',
+      categories: [
+        {
+          name: '任务队列',
+          items: [
+            { key: 'taskQueue.concurrency', label: '队列并发数', type: 'number' },
+            { key: 'taskQueue.defaultTimeout', label: '任务超时 (ms)', type: 'number' },
+          ]
+        },
+        {
+          name: '速率限制',
+          items: [
+            { key: 'rateLimit.enabled', label: '启用速率限制', type: 'boolean' },
+            { key: 'rateLimit.windowMs', label: '时间窗口 (ms)', type: 'number' },
+            { key: 'rateLimit.maxRequests', label: '最大请求数', type: 'number' },
+          ]
+        },
+        {
+          name: '统计收集',
+          items: [
+            { key: 'statistics.enabled', label: '启用统计收集', type: 'boolean' },
+            { key: 'statistics.collectionInterval', label: '采集间隔 (ms)', type: 'number' },
+          ]
+        },
+        {
+          name: 'Webhook',
+          items: [
+            { key: 'webhook.enabled', label: '启用 Webhook', type: 'boolean' },
+            { key: 'webhook.defaultUrl', label: 'Webhook URL', type: 'string' },
+            { key: 'webhook.timeout', label: '超时时间 (ms)', type: 'number' },
+            { key: 'webhook.retries', label: '重试次数', type: 'number' },
+          ]
+        }
       ]
     },
     {
       name: '🔐 安全配置',
-      items: [
-        { key: 'security.auth.enabled', label: '启用 API 认证', value: config.security?.auth?.enabled || false, type: 'boolean' },
-        { key: 'security.auth.bypassHealthCheck', label: '健康检查绕过认证', value: config.security?.auth?.bypassHealthCheck !== undefined ? config.security.auth.bypassHealthCheck : true, type: 'boolean' },
-        { key: 'view_api_key', label: '🔑 查看当前 API Key', value: 'view', type: 'viewkey' },
-        { key: 'security.swaggerDocs.enabled', label: '启用 Swagger 文档', value: config.security?.swaggerDocs?.enabled !== false, type: 'boolean' },
-        { key: 'allowDangerouslySkipPermissions', label: '跳过权限检查', value: config.allowDangerouslySkipPermissions || false, type: 'boolean' },
+      categories: [
+        {
+          name: 'API 认证',
+          items: [
+            { key: 'security.auth.enabled', label: '启用 API 认证', type: 'boolean' },
+            { key: 'security.auth.bypassHealthCheck', label: '健康检查绕过认证', type: 'boolean' },
+            { key: 'view_api_key', label: '🔑 查看 API Key', type: 'viewkey' },
+          ]
+        },
+        {
+          name: '权限与文档',
+          items: [
+            { key: 'security.swaggerDocs.enabled', label: '启用 Swagger 文档', type: 'boolean' },
+            { key: 'allowDangerouslySkipPermissions', label: '跳过权限检查', type: 'boolean' },
+          ]
+        }
       ]
-    },
+    }
   ];
 
   console.log('');
   console.log(chalk.bold.cyan('╔═══════════════════════════════════════════════════════════════╗'));
-  console.log(chalk.bold.cyan('║           📝 配置设置                                   ║'));
+  console.log(chalk.bold.cyan('║           📝 配置设置                                         ║'));
   console.log(chalk.bold.cyan('╠═══════════════════════════════════════════════════════════════╣'));
-  console.log(chalk.bold.cyan('║ 💡 使用上下键导航，Enter 编辑选中项，ESC 退出                      ║'));
+  console.log(chalk.bold.cyan('║ 💡 选择分类 → 选择配置项                                        ║'));
   console.log(chalk.bold.cyan('╚═══════════════════════════════════════════════════════════════╝'));
   console.log('');
 
@@ -812,31 +842,28 @@ async function visualConfigEditor() {
     console.log('');
   }
 
-  // Flatten all items for selection
-  const allItems = [];
-  configSections.forEach(section => {
-    section.items.forEach(item => {
-      const currentValue = getNestedValue(config, item.key);
-      const displayValue = formatValue(currentValue, item.type);
+  // 辅助函数：构建配置项显示名称
+  function buildItemDisplay(categoryName, item) {
+    const currentValue = getNestedValue(config, item.key);
+    const displayValue = formatValue(currentValue, item.type);
+    return {
+      name: `${chalk.gray(`[${categoryName}]`)} ${chalk.cyan(item.label)}: ${chalk.yellow(displayValue)}`,
+      value: item,
+      short: `${item.label} (${displayValue})`,
+    };
+  }
 
-      allItems.push({
-        name: `${chalk.gray(section.name)} ${chalk.white('│')} ${chalk.cyan(item.label)}: ${chalk.yellow(displayValue)}`,
-        value: item,
-        short: `${item.label} (${displayValue})`,
-      });
-    });
-  });
-
-  // Main menu loop
+  // 主菜单循环
   while (true) {
-    const { selectedItem } = await inquirer.prompt([
+    // 一级菜单：选择分类
+    const { selectedCategory } = await inquirer.prompt([
       {
         type: 'list',
-        name: 'selectedItem',
-        message: '选择要修改的配置项:',
-        pageSize: 20,
+        name: 'selectedCategory',
+        message: '选择配置分类:',
+        pageSize: 15,
         choices: [
-          ...allItems,
+          ...configHierarchy.map(cat => ({ name: cat.name, value: cat })),
           new inquirer.Separator(),
           { name: '📄 在外部编辑器中打开配置文件', value: 'edit' },
           { name: '✖ 完成并退出', value: 'quit' },
@@ -844,36 +871,55 @@ async function visualConfigEditor() {
       },
     ]);
 
-    if (selectedItem === 'quit') {
-      // 退出前保存配置
+    if (selectedCategory === 'quit') {
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
       console.log('');
       console.log(chalk.green('✓ 配置已保存'));
       console.log(chalk.cyan('ℹ 配置将在约 1 秒内通过热重载生效'));
       console.log('');
       break;
-    } else if (selectedItem === 'edit') {
+    }
+
+    if (selectedCategory === 'edit') {
       await openInEditor();
-      // 编辑器关闭后，重新加载配置
       config = loadConfig();
-      // 重新构建菜单项
-      const rebuiltItems = [];
-      configSections.forEach(section => {
-        section.items.forEach(item => {
-          const currentValue = getNestedValue(config, item.key);
-          const displayValue = formatValue(currentValue, item.type);
-          rebuiltItems.push({
-            name: `${chalk.gray(section.name)} ${chalk.white('│')} ${chalk.cyan(item.label)}: ${chalk.yellow(displayValue)}`,
-            value: item,
-            short: `${item.label} (${displayValue})`,
-          });
+      continue;
+    }
+
+    // 二级菜单：直接显示该分类下所有配置项（按子分类分组）
+    const category = selectedCategory;
+    let stayInCategory = true;
+
+    while (stayInCategory) {
+      // 构建配置项列表（带子分类分隔符）
+      const itemChoices = [];
+      category.categories.forEach(subCat => {
+        itemChoices.push(new inquirer.Separator(`  ── ${subCat.name} ──`));
+        subCat.items.forEach(item => {
+          itemChoices.push(buildItemDisplay(subCat.name, item));
         });
       });
-      allItems.length = 0;
-      allItems.push(...rebuiltItems);
-    } else {
-      // Edit selected item
-      // Note: selectedItem is already the item object (the value from the choice), not the choice wrapper
+
+      const { selectedItem } = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'selectedItem',
+          message: `${category.name} - 选择配置项:`,
+          pageSize: 20,
+          choices: [
+            ...itemChoices,
+            new inquirer.Separator(),
+            { name: '◀ 返回上级', value: 'back' },
+          ],
+        },
+      ]);
+
+      if (selectedItem === 'back') {
+        stayInCategory = false;
+        continue;
+      }
+
+      // 编辑配置项
       const item = selectedItem;
       const currentValue = getNestedValue(config, item.key);
 
@@ -902,21 +948,14 @@ async function visualConfigEditor() {
           console.log('');
         }
 
-        const { continueEdit } = await inquirer.prompt([
+        await inquirer.prompt([
           {
             type: 'confirm',
-            name: 'continueEdit',
+            name: 'continue',
             message: '按 Enter 继续',
             default: true,
           },
         ]);
-
-        if (!continueEdit) {
-          console.log('');
-          console.log(chalk.green('✓ 配置已保存，退出配置编辑'));
-          console.log('');
-          break;
-        }
       } else if (item.type === 'boolean') {
         const { newValue } = await inquirer.prompt([
           {
@@ -927,6 +966,8 @@ async function visualConfigEditor() {
           },
         ]);
         setNestedValue(config, item.key, newValue);
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        console.log(chalk.green(`✓ ${item.label} 已更新`));
       } else if (item.options) {
         const { newValue } = await inquirer.prompt([
           {
@@ -938,6 +979,8 @@ async function visualConfigEditor() {
           },
         ]);
         setNestedValue(config, item.key, newValue);
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        console.log(chalk.green(`✓ ${item.label} 已更新`));
       } else if (item.type === 'number') {
         const { newValue } = await inquirer.prompt([
           {
@@ -948,6 +991,8 @@ async function visualConfigEditor() {
           },
         ]);
         setNestedValue(config, item.key, newValue);
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        console.log(chalk.green(`✓ ${item.label} 已更新`));
       } else {
         const { newValue } = await inquirer.prompt([
           {
@@ -958,47 +1003,9 @@ async function visualConfigEditor() {
           },
         ]);
         setNestedValue(config, item.key, newValue);
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        console.log(chalk.green(`✓ ${item.label} 已更新`));
       }
-
-      // 立即保存配置
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-      console.log('');
-      console.log(chalk.green(`✓ ${item.label} 已更新并保存`));
-      console.log(chalk.cyan('ℹ 配置将在约 1 秒内通过热重载生效'));
-      console.log('');
-
-      // 询问是否继续编辑
-      const { continueEdit } = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'continueEdit',
-          message: '继续编辑其他配置项?',
-          default: true,
-        },
-      ]);
-
-      if (!continueEdit) {
-        console.log('');
-        console.log(chalk.green('✓ 配置已保存，退出配置编辑'));
-        console.log('');
-        break;
-      }
-
-      // 更新菜单显示（显示最新值）
-      const rebuiltItems = [];
-      configSections.forEach(section => {
-        section.items.forEach(item => {
-          const currentValue = getNestedValue(config, item.key);
-          const displayValue = formatValue(currentValue, item.type);
-          rebuiltItems.push({
-            name: `${chalk.gray(section.name)} ${chalk.white('│')} ${chalk.cyan(item.label)}: ${chalk.yellow(displayValue)}`,
-            value: item,
-            short: `${item.label} (${displayValue})`,
-          });
-        });
-      });
-      allItems.length = 0;
-      allItems.push(...rebuiltItems);
     }
   }
 }
