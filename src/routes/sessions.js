@@ -565,7 +565,8 @@ function createSessionRoutes(sessionManager, messageStore = null) {
       const streamExecutor = new ClaudeStreamExecutor(
         sessionManager.config,
         sessionManager.sessionStore,
-        sessionManager.statsStore
+        sessionManager.statsStore,
+        messageStore  // 传递 messageStore
       );
 
       await streamExecutor.executeStream({

@@ -6,10 +6,11 @@ const getLogger = require('../utils/logger');
  * 使用 --output-format stream-json 输出 SSE 事件流
  */
 class ClaudeStreamExecutor {
-  constructor(config, sessionStore = null, statsStore = null) {
+  constructor(config, sessionStore = null, statsStore = null, messageStore = null) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.statsStore = statsStore;
+    this.messageStore = messageStore;
     this.logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
   }
 
@@ -175,6 +176,24 @@ class ClaudeStreamExecutor {
       }
     }
 
+    // 先保存用户消息（在执行前，记录正确的发送时间）
+    if (this.messageStore && sessionId) {
+      try {
+        await this.messageStore.addMessage(sessionId, {
+          role: 'user',
+          content: prompt,
+          metadata: {},
+        });
+        this.logger.debug(`User message saved for stream session`, { session_id: sessionId });
+      } catch (msgErr) {
+        // 消息存储失败不影响主流程
+        this.logger.warn(`Failed to save user message for stream session`, {
+          session_id: sessionId,
+          error: msgErr.message,
+        });
+      }
+    }
+
     // 构建命令参数
     const args = this.buildStreamCommandArgs({
       prompt,
@@ -194,13 +213,13 @@ class ClaudeStreamExecutor {
     });
 
     // 执行流式命令
-    this.spawnStreamCommand(projectPath, args, res, startTime, sessionId);
+    this.spawnStreamCommand(projectPath, args, res, Date.now(), sessionId, model);
   }
 
   /**
    * 生成流式命令并处理输出
    */
-  spawnStreamCommand(projectPath, args, res, startTime, sessionId) {
+  spawnStreamCommand(projectPath, args, res, startTime, sessionId, model) {
     const env = { ...process.env };
 
     if (this.config.nodeBinDir) {
@@ -216,6 +235,11 @@ class ClaudeStreamExecutor {
     let buffer = '';
     let totalCost = 0;
     let lastResult = null;
+    // 收集 assistant 消息内容（包括 thinking）
+    let assistantContent = [];
+    let thinkingContent = '';
+    // 从 message_start 事件中获取实际使用的模型
+    let actualModel = model;
 
     // 处理客户端断开连接
     res.on('close', () => {
@@ -237,10 +261,31 @@ class ClaudeStreamExecutor {
             // 转发所有事件到客户端
             this.sendSSEEvent(res, 'message', json);
 
-            // 如果是结果事件，记录成本
+            // 从 message_start 事件中提取实际使用的模型
+            if (json.type === 'stream_event' && json.event?.type === 'message_start' && json.event?.message?.model) {
+              actualModel = json.event.message.model;
+              this.logger.debug(`Actual model from message_start`, { model: actualModel });
+            }
+
+            // 收集 assistant 消息（包括 thinking）
+            if (json.type === 'assistant' && json.message?.content) {
+              for (const block of json.message.content) {
+                if (block.type === 'thinking' && block.thinking) {
+                  thinkingContent += block.thinking;
+                } else if (block.type === 'text' && block.text) {
+                  assistantContent.push({ type: 'text', text: block.text });
+                }
+              }
+            }
+
+            // 如果是结果事件，记录成本和最终回复
             if (json.type === 'result') {
               lastResult = json;
               totalCost = json.total_cost_usd || 0;
+              // 最终结果中的 result 字段是完整回复
+              if (json.result) {
+                assistantContent = [{ type: 'result', text: json.result }];
+              }
             }
           } catch (parseErr) {
             this.logger.warn(`Failed to parse JSON line`, {
@@ -268,7 +313,7 @@ class ClaudeStreamExecutor {
     }, 300000);
 
     // 进程结束处理
-    child.on('close', (code) => {
+    child.on('close', async (code) => {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
 
@@ -278,8 +323,11 @@ class ClaudeStreamExecutor {
         return;
       }
 
+      // 存储助手消息到 messageStore（用户消息已在执行前保存）
+      await this.saveMessages(sessionId, thinkingContent, assistantContent, lastResult, actualModel);
+
       // 更新会话统计
-      this.updateSessionStats(sessionId, totalCost, duration);
+      await this.updateSessionStats(sessionId, totalCost, duration);
 
       // 发送完成事件
       this.sendSSEDone(res, {
@@ -324,6 +372,61 @@ class ClaudeStreamExecutor {
       }
     } catch (err) {
       this.logger.warn(`Failed to update session stats`, {
+        session_id: sessionId,
+        error: err.message,
+      });
+    }
+  }
+
+  /**
+   * 保存助手消息到 messageStore
+   * 注意：用户消息已在执行前保存，这里只保存助手回复
+   * @param {string} sessionId - 会话 ID
+   * @param {string} thinkingContent - 思考内容
+   * @param {Array} assistantContent - 助手回复内容
+   * @param {object} lastResult - 最终结果对象
+   * @param {string} model - 使用的模型
+   */
+  async saveMessages(sessionId, thinkingContent, assistantContent, lastResult, model) {
+    if (!this.messageStore || !sessionId) return;
+
+    try {
+      // 构建助手消息内容
+      let assistantText = '';
+      const metadata = {
+        model: model || this.config.defaultModel,
+      };
+
+      // 如果有最终结果，优先使用
+      if (lastResult?.result) {
+        assistantText = lastResult.result;
+        metadata.cost_usd = lastResult.total_cost_usd;
+        metadata.duration_ms = lastResult.duration_ms;
+        metadata.model_usage = lastResult.modelUsage;
+      } else if (assistantContent.length > 0) {
+        // 否则拼接收集到的内容
+        assistantText = assistantContent.map(c => c.text).join('\n');
+      }
+
+      // 添加思考内容到元数据
+      if (thinkingContent) {
+        metadata.thinking = thinkingContent;
+      }
+
+      // 只保存助手消息（用户消息已在执行前保存）
+      await this.messageStore.addMessage(sessionId, {
+        role: 'assistant',
+        content: assistantText,
+        metadata,
+      });
+
+      this.logger.debug(`Assistant message saved for session`, {
+        session_id: sessionId,
+        has_thinking: !!thinkingContent,
+        response_length: assistantText.length,
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to save assistant message`, {
         session_id: sessionId,
         error: err.message,
       });
