@@ -2,8 +2,9 @@
 
 > 为 Claude CLI 提供企业级 HTTP API 封装，支持会话管理、异步任务、统计监控等完整功能
 
-[![Node.js](https://img.shields.io/node/v/claude-code-server.svg)](https://nodejs.org/)
-[![License](https://img.shields.io/npm/l/claude-code-server.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/@csdwd/ccs.svg)](https://www.npmjs.com/package/@csdwd/ccs)
+[![Node.js](https://img.shields.io/node/v/@csdwd/ccs.svg)](https://nodejs.org/)
+[![License](https://img.shields.io/npm/l/@csdwd/ccs.svg)](LICENSE)
 
 简体中文 | [**English**](README.md)
 
@@ -32,7 +33,32 @@ Claude Code Server 是一个功能完整的 HTTP API 服务，将 Anthropic Clau
 - 🛑 **任务取消** - 实时取消运行中的任务
 - 💾 **消息存储** - 存储和检索对话消息
 
-## 📦 安装
+## 🚀 使用 npx 快速开始
+
+最简单的使用方式 - 无需安装：
+
+```bash
+# 直接使用 npx 运行
+npx @csdwd/ccs
+```
+
+这将启动 TUI 管理工具，你可以：
+- 启动/停止服务器
+- 配置设置
+- 查看日志和统计
+- 管理会话和任务
+
+### 全局安装（可选）
+
+```bash
+# 全局安装
+npm install -g @csdwd/ccs
+
+# 然后可以在任意位置运行
+ccs
+```
+
+## 📦 本地开发安装
 
 ### 前置要求
 
@@ -44,13 +70,28 @@ Claude Code Server 是一个功能完整的 HTTP API 服务，将 Anthropic Clau
 
 ```bash
 # 克隆或下载项目
+git clone https://github.com/csdwd/claude-code-server.git
 cd claude-code-server
 
 # 安装依赖
 npm install
+```
 
-# 或使用 yarn
-yarn install
+## 🖥️ CLI 命令
+
+```bash
+# 启动 TUI 管理工具（交互式）
+npx @csdwd/ccs
+
+# 或使用直接命令：
+npx @csdwd/ccs start    # 启动服务器
+npx @csdwd/ccs stop     # 停止服务器
+npx @csdwd/ccs status   # 查看服务器状态
+
+# 如果全局安装：
+ccs start
+ccs stop
+ccs status
 ```
 
 ## 🚀 快速开始
@@ -103,20 +144,24 @@ yarn install
 
 ### 2. 启动服务
 
-**方式一：使用 TUI（推荐）**
+**方式一：使用 npx（推荐）**
+
+```bash
+npx @csdwd/ccs              # 启动 TUI 管理工具
+npx @csdwd/ccs start        # 直接启动服务器
+npx @csdwd/ccs stop         # 停止服务器
+npx @csdwd/ccs status       # 查看状态
+```
+
+**方式二：本地开发**
 
 ```bash
 npm run cli
 # 或
-node cli.js
-```
-
-**方式二：命令行**
-
-```bash
-node cli.js start   # 启动服务
-node cli.js stop    # 停止服务
-node cli.js status  # 查看状态
+node cli.js                 # 启动 TUI
+node cli.js start           # 启动服务
+node cli.js stop            # 停止服务
+node cli.js status          # 查看状态
 ```
 
 ### 3. 验证安装
@@ -267,6 +312,10 @@ TUI 包含一个可视化配置编辑器，将所有设置按类别组织：
 ### 启动 TUI
 
 ```bash
+# 使用 npx（推荐）
+npx @csdwd/ccs
+
+# 或本地开发
 node cli.js
 ```
 

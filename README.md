@@ -2,8 +2,9 @@
 
 > Enterprise-grade HTTP API wrapper for Claude CLI with complete features including session management, async tasks, statistics monitoring, and more
 
-[![Node.js](https://img.shields.io/node/v/claude-code-server.svg)](https://nodejs.org/)
-[![License](https://img.shields.io/npm/l/claude-code-server.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/@csdwd/ccs.svg)](https://www.npmjs.com/package/@csdwd/ccs)
+[![Node.js](https://img.shields.io/node/v/@csdwd/ccs.svg)](https://nodejs.org/)
+[![License](https://img.shields.io/npm/l/@csdwd/ccs.svg)](LICENSE)
 
 [**简体中文**](README_zh.md) | English
 
@@ -32,7 +33,32 @@ Claude Code Server is a full-featured HTTP API service that wraps the Anthropic 
 - 🛑 **Task Cancellation** - Cancel running tasks in real-time
 - 💾 **Message Storage** - Store and retrieve conversation messages
 
-## 📦 Installation
+## 🚀 Quick Start with npx
+
+The fastest way to use Claude Code Server - no installation required:
+
+```bash
+# Run directly with npx
+npx @csdwd/ccs
+```
+
+This will launch the TUI management tool where you can:
+- Start/stop the server
+- Configure settings
+- View logs and statistics
+- Manage sessions and tasks
+
+### Global Installation (Optional)
+
+```bash
+# Install globally
+npm install -g @csdwd/ccs
+
+# Then run anywhere
+ccs
+```
+
+## 📦 Local Development Installation
 
 ### Prerequisites
 
@@ -44,13 +70,28 @@ Claude Code Server is a full-featured HTTP API service that wraps the Anthropic 
 
 ```bash
 # Clone or download the project
+git clone https://github.com/csdwd/claude-code-server.git
 cd claude-code-server
 
 # Install dependencies
 npm install
+```
 
-# Or using yarn
-yarn install
+## 🖥️ CLI Commands
+
+```bash
+# Launch TUI management tool (interactive)
+npx @csdwd/ccs
+
+# Or with direct commands:
+npx @csdwd/ccs start    # Start the server
+npx @csdwd/ccs stop     # Stop the server
+npx @csdwd/ccs status   # Check server status
+
+# If installed globally:
+ccs start
+ccs stop
+ccs status
 ```
 
 ## 🚀 Quick Start
@@ -103,20 +144,24 @@ The configuration file is located at `~/.claude-code-server/config.json` (auto-g
 
 ### 2. Start the Service
 
-**Method 1: Using TUI (Recommended)**
+**Method 1: Using npx (Recommended)**
+
+```bash
+npx @csdwd/ccs          # Launch TUI management tool
+npx @csdwd/ccs start    # Start the server directly
+npx @csdwd/ccs stop     # Stop the server
+npx @csdwd/ccs status   # Check status
+```
+
+**Method 2: Local Development**
 
 ```bash
 npm run cli
 # or
-node cli.js
-```
-
-**Method 2: Command Line**
-
-```bash
-node cli.js start   # Start the service
-node cli.js stop    # Stop the service
-node cli.js status  # Check status
+node cli.js             # Launch TUI
+node cli.js start       # Start the service
+node cli.js stop        # Stop the service
+node cli.js status      # Check status
 ```
 
 ### 3. Verify Installation

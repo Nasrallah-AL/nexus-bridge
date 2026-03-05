@@ -1,14 +1,42 @@
 {
-  "name": "claude-code-server",
+  "name": "@csdwd/ccs",
   "version": "1.0.0",
-  "description": "A HTTP API wrapper for Claude CLI with session management and async tasks",
+  "description": "A HTTP API wrapper for Claude CLI with session management, async tasks, and TUI management tool",
   "main": "server.js",
   "bin": {
-    "claude-code": "./cli.js"
+    "ccs": "./cli.js"
   },
   "scripts": {
     "start": "node server.js",
     "cli": "node cli.js"
+  },
+  "files": [
+    "cli.js",
+    "server.js",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "claude",
+    "claude-cli",
+    "claude-code",
+    "claude-code-server",
+    "claude-code-api",
+    "claude-code-api-server"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/csdwd/claude-code-server.git"
+  },
+  "homepage": "https://github.com/csdwd/claude-code-server#readme",
+  "bugs": {
+    "url": "https://github.com/csdwd/claude-code-server/issues"
+  },
+  "author": "csdwd",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "axios": "^1.13.5",
