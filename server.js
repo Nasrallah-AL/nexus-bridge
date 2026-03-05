@@ -106,10 +106,12 @@ async function loadConfig() {
   const results = await resolver.detectAndValidate(config);
   const { updates, warnings } = resolver.applyDetectionResults(config, results);
 
-  // 如果路径有更新，保存配置
+  // 如果路径有更新，保存配置（排除 _pathDetection）
   if (updates.length > 0) {
+    const configToSave = { ...config };
+    delete configToSave._pathDetection;
     try {
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      fs.writeFileSync(configPath, JSON.stringify(configToSave, null, 2));
       console.log(`✅ 配置已更新: ${configPath}`);
     } catch (err) {
       console.error(`❌ 更新配置失败 ${configPath}:`, err.message);
@@ -125,9 +127,11 @@ async function loadConfig() {
       config.workspacePath = config.defaultProjectPath;
     }
     delete config.defaultProjectPath;
-    // 保存更新后的配置
+    // 保存更新后的配置（排除 _pathDetection）
+    const configToSave = { ...config };
+    delete configToSave._pathDetection;
     try {
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      fs.writeFileSync(configPath, JSON.stringify(configToSave, null, 2));
       console.log(`✅ 已迁移 defaultProjectPath → workspacePath`);
     } catch (err) {
       console.error(`❌ 更新配置失败:`, err.message);

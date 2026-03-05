@@ -103,16 +103,29 @@ function loadConfig() {
     // 创建默认配置文件
     fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
     console.log(chalk.yellow(`已创建默认配置文件: ${configPath}`));
+    return defaultConfig;
   }
 
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  let config;
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch (err) {
+    console.log(chalk.red(`配置文件损坏，正在重置: ${configPath}`));
+    const backupPath = `${configPath}.backup.${Date.now()}`;
+    fs.renameSync(configPath, backupPath);
+    console.log(chalk.gray(`已备份损坏的配置到: ${backupPath}`));
+    fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
+    return defaultConfig;
+  }
 
   // 兼容旧配置：如果有 defaultProjectPath，重命名为 workspacePath
   if (config.defaultProjectPath && !config.workspacePath) {
     config.workspacePath = config.defaultProjectPath;
     delete config.defaultProjectPath;
-    // 保存更新的配置
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    // 保存更新的配置（排除 _pathDetection）
+    const configToSave = { ...config };
+    delete configToSave._pathDetection;
+    fs.writeFileSync(configPath, JSON.stringify(configToSave, null, 2));
     console.log(chalk.yellow('配置已更新：defaultProjectPath 重命名为 workspacePath'));
   }
 
