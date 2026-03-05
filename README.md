@@ -56,7 +56,7 @@ This will launch the TUI management tool where you can:
 # Install globally
 npm install -g @csdwd/ccs
 
-# Then run anywhere
+# Then run anywhere to launch the TUI
 ccs
 
 # Direct commands

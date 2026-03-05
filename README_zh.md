@@ -56,7 +56,7 @@ npx @csdwd/ccs
 # 全局安装
 npm install -g @csdwd/ccs
 
-# 然后可以在任意位置运行
+# 然后可以在任意位置运行启动 TUI 管理工具
 ccs
 
 # 直接命令
