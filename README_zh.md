@@ -33,7 +33,9 @@ Claude Code Server 是一个功能完整的 HTTP API 服务，将 Anthropic Clau
 - 🛑 **任务取消** - 实时取消运行中的任务
 - 💾 **消息存储** - 存储和检索对话消息
 
-## 🚀 使用 npx 快速开始
+## 🚀 快速开始
+
+### 使用 npx（推荐）
 
 最简单的使用方式 - 无需安装：
 
@@ -48,7 +50,7 @@ npx @csdwd/ccs
 - 查看日志和统计
 - 管理会话和任务
 
-### 全局安装（可选）
+### 全局安装
 
 ```bash
 # 全局安装
@@ -56,9 +58,23 @@ npm install -g @csdwd/ccs
 
 # 然后可以在任意位置运行
 ccs
+
+# 直接命令
+ccs start      # 启动服务器
+ccs stop       # 停止服务器
+ccs status     # 查看服务器状态
 ```
 
-## 📦 本地开发安装
+### CLI 命令
+
+| 命令 | 说明 |
+|------|------|
+| `npx @csdwd/ccs` | 启动 TUI 管理工具（交互式） |
+| `npx @csdwd/ccs start` | 启动服务器 |
+| `npx @csdwd/ccs stop` | 停止服务器 |
+| `npx @csdwd/ccs status` | 查看服务器状态 |
+
+## 🛠️ 运行项目
 
 ### 前置要求
 
@@ -66,37 +82,26 @@ ccs
 - **npm** 或 **yarn**
 - **Claude CLI** - 已安装并配置
 
-### 安装步骤
+### 本地开发
 
 ```bash
-# 克隆或下载项目
+# 克隆项目
 git clone https://github.com/csdwd/claude-code-server.git
 cd claude-code-server
 
 # 安装依赖
 npm install
+
+# 运行 TUI
+node cli.js
+
+# 或使用直接命令
+node cli.js start    # 启动服务器
+node cli.js stop     # 停止服务器
+node cli.js status   # 查看服务器状态
 ```
 
-## 🖥️ CLI 命令
-
-```bash
-# 启动 TUI 管理工具（交互式）
-npx @csdwd/ccs
-
-# 或使用直接命令：
-npx @csdwd/ccs start    # 启动服务器
-npx @csdwd/ccs stop     # 停止服务器
-npx @csdwd/ccs status   # 查看服务器状态
-
-# 如果全局安装：
-ccs start
-ccs stop
-ccs status
-```
-
-## 🚀 快速开始
-
-### 1. 配置
+## ⚙️ 配置
 
 配置文件位于 `~/.claude-code-server/config.json`（首次启动自动生成）：
 
@@ -142,29 +147,7 @@ ccs status
   ```
 - 如果使用系统默认 Node.js，保持 `nodeBinDir` 为 `null` 即可
 
-### 2. 启动服务
-
-**方式一：使用 npx（推荐）**
-
-```bash
-npx @csdwd/ccs              # 启动 TUI 管理工具
-npx @csdwd/ccs start        # 直接启动服务器
-npx @csdwd/ccs stop         # 停止服务器
-npx @csdwd/ccs status       # 查看状态
-```
-
-**方式二：本地开发**
-
-```bash
-npm run cli
-# 或
-node cli.js                 # 启动 TUI
-node cli.js start           # 启动服务
-node cli.js stop            # 停止服务
-node cli.js status          # 查看状态
-```
-
-### 3. 验证安装
+### 验证安装
 
 ```bash
 # 健康检查
@@ -174,6 +157,7 @@ curl http://localhost:5546/health
 curl -X POST http://localhost:5546/api/messages \
   -H "Content-Type: application/json" \
   -d '{"prompt": "解释一下什么是 HTTP"}'
+```
 
 ## 📚 API 文档
 

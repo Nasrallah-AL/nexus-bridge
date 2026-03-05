@@ -33,7 +33,9 @@ Claude Code Server is a full-featured HTTP API service that wraps the Anthropic 
 - 🛑 **Task Cancellation** - Cancel running tasks in real-time
 - 💾 **Message Storage** - Store and retrieve conversation messages
 
-## 🚀 Quick Start with npx
+## 🚀 Quick Start
+
+### Using npx (Recommended)
 
 The fastest way to use Claude Code Server - no installation required:
 
@@ -48,7 +50,7 @@ This will launch the TUI management tool where you can:
 - View logs and statistics
 - Manage sessions and tasks
 
-### Global Installation (Optional)
+### Global Installation
 
 ```bash
 # Install globally
@@ -56,9 +58,23 @@ npm install -g @csdwd/ccs
 
 # Then run anywhere
 ccs
+
+# Direct commands
+ccs start      # Start the server
+ccs stop       # Stop the server
+ccs status     # Check server status
 ```
 
-## 📦 Local Development Installation
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `npx @csdwd/ccs` | Launch TUI management tool (interactive) |
+| `npx @csdwd/ccs start` | Start the server |
+| `npx @csdwd/ccs stop` | Stop the server |
+| `npx @csdwd/ccs status` | Check server status |
+
+## 🛠️ Running the Project
 
 ### Prerequisites
 
@@ -66,37 +82,26 @@ ccs
 - **npm** or **yarn**
 - **Claude CLI** - Installed and configured
 
-### Installation Steps
+### Local Development
 
 ```bash
-# Clone or download the project
+# Clone the project
 git clone https://github.com/csdwd/claude-code-server.git
 cd claude-code-server
 
 # Install dependencies
 npm install
+
+# Run TUI
+node cli.js
+
+# Or use direct commands
+node cli.js start    # Start the server
+node cli.js stop     # Stop the server
+node cli.js status   # Check server status
 ```
 
-## 🖥️ CLI Commands
-
-```bash
-# Launch TUI management tool (interactive)
-npx @csdwd/ccs
-
-# Or with direct commands:
-npx @csdwd/ccs start    # Start the server
-npx @csdwd/ccs stop     # Stop the server
-npx @csdwd/ccs status   # Check server status
-
-# If installed globally:
-ccs start
-ccs stop
-ccs status
-```
-
-## 🚀 Quick Start
-
-### 1. Configuration
+## ⚙️ Configuration
 
 The configuration file is located at `~/.claude-code-server/config.json` (auto-generated on first startup):
 
@@ -142,29 +147,7 @@ The configuration file is located at `~/.claude-code-server/config.json` (auto-g
   ```
 - For system Node.js, keep `nodeBinDir` as `null`
 
-### 2. Start the Service
-
-**Method 1: Using npx (Recommended)**
-
-```bash
-npx @csdwd/ccs          # Launch TUI management tool
-npx @csdwd/ccs start    # Start the server directly
-npx @csdwd/ccs stop     # Stop the server
-npx @csdwd/ccs status   # Check status
-```
-
-**Method 2: Local Development**
-
-```bash
-npm run cli
-# or
-node cli.js             # Launch TUI
-node cli.js start       # Start the service
-node cli.js stop        # Stop the service
-node cli.js status      # Check status
-```
-
-### 3. Verify Installation
+### Verify Installation
 
 ```bash
 # Health check
