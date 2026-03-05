@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { generateSecretKey, deriveApiKey } = require('./src/utils/keyGenerator');
+const { version } = require('./package.json');
 
 // 配置目录和文件
 const configDir = path.join(process.env.HOME || os.homedir(), '.claude-code-server');
@@ -1812,6 +1813,12 @@ async function mainMenu() {
 // 命令行参数处理
 const args = process.argv.slice(2);
 
+// 处理 -v / --version
+if (args.includes('-v') || args.includes('--version')) {
+  console.log(`@csdwd/ccs v${version}`);
+  process.exit(0);
+}
+
 if (args.length === 0) {
   // 交互式菜单
   mainMenu().catch(console.error);
@@ -1844,6 +1851,7 @@ if (args.length === 0) {
     default:
       console.log(chalk.red('未知命令: ') + command);
       console.log(chalk.gray('可用命令: start, stop, status, logs, docs, config, test'));
+      console.log(chalk.gray('选项: -v, --version  查看版本号'));
       console.log(chalk.gray('或直接运行进入交互式菜单'));
       process.exit(1);
   }
