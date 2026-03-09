@@ -1572,10 +1572,10 @@ async function listTasks() {
         };
         const statusColor = statusColors[task.status] || chalk.gray;
 
-        console.log(`${chalk.bold((index + 1) + '.')} ${chalk.white(task.id.substring(0, 8))}... - ${statusColor('● ' + task.status)} ${chalk.gray('(优先级: ' + task.priority + ')')}`);
-        console.log(`   ${chalk.gray('提示:')} ${task.prompt.substring(0, 60)}${task.prompt.length > 60 ? '...' : ''}`);
+        console.log(`${chalk.bold((index + 1) + '.')} ${chalk.white(task.id)} - ${statusColor('● ' + task.status)} ${chalk.gray('(优先级: ' + task.priority + ')')}`);
+        console.log(`   ${chalk.gray('提示:')} ${task.prompt.substring(0, 180)}${task.prompt.length > 120 ? '...' : ''}`);
         if (task.status === 'completed') {
-          console.log(`   ${chalk.green('结果:')} ${task.result?.substring(0, 60)}${task.result?.length > 60 ? '...' : ''}`);
+          console.log(`   ${chalk.green('结果:')} ${task.result?.substring(0, 120)}${task.result?.length > 120 ? '...' : ''}`);
           console.log(`   ${chalk.gray('耗时:')} ${task.duration_ms}ms | ${chalk.gray('花费:')} $${task.cost_usd.toFixed(4)}`);
         } else if (task.status === 'failed') {
           console.log(`   ${chalk.red('错误:')} ${task.error}`);
@@ -1717,6 +1717,90 @@ async function changeTaskPriority() {
   }
 }
 
+// 取消任务
+async function cancelTask() {
+  const { running } = isServerRunning();
+
+  if (!running) {
+    console.log(chalk.red('✗ 服务未运行，请先启动服务'));
+    return;
+  }
+
+  const spinner = ora('获取可取消的任务...').start();
+
+  try {
+    // 获取 pending 和 processing 状态的任务
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/tasks?status=pending`, {}, config);
+    const processingResponse = await authenticatedFetch(`http://localhost:${config.port}/api/tasks?status=processing`, {}, config);
+
+    const data = await response.json();
+    const processingData = await processingResponse.json();
+
+    spinner.stop();
+
+    const cancellableTasks = [
+      ...(data.success ? data.tasks : []),
+      ...(processingData.success ? processingData.tasks : []),
+    ];
+
+    if (cancellableTasks.length === 0) {
+      console.log(chalk.yellow('没有找到可以取消的任务'));
+      return;
+    }
+
+    // 让用户选择任务
+    const choices = cancellableTasks.map(task => ({
+      name: `${task.id.substring(0, 8)}... [${task.status}] 优先级: ${task.priority} - ${task.prompt.substring(0, 40)}...`,
+      value: task.id,
+      short: task.id.substring(0, 8),
+    }));
+
+    const { taskId } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'taskId',
+        message: '选择要取消的任务:',
+        choices: choices,
+      },
+    ]);
+
+    // 确认取消
+    const { confirm } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: '确定要取消这个任务吗?',
+        default: false,
+      },
+    ]);
+
+    if (!confirm) {
+      console.log(chalk.gray('已取消操作'));
+      return;
+    }
+
+    // 取消任务
+    const cancelSpinner = ora('正在取消任务...').start();
+    const cancelResponse = await authenticatedFetch(`http://localhost:${config.port}/api/tasks/${taskId}`, {
+      method: 'DELETE',
+    }, config);
+
+    const cancelData = await cancelResponse.json();
+    cancelSpinner.stop();
+
+    if (cancelData.success) {
+      console.log('');
+      console.log(chalk.green('✓ 任务已取消'));
+      console.log(`  任务 ID: ${taskId.substring(0, 8)}...`);
+      console.log('');
+    } else {
+      console.log(chalk.red('✗ 取消失败: ' + cancelData.error));
+    }
+  } catch (error) {
+    spinner.fail('操作失败: ' + error.message);
+  }
+}
+
 // 任务列表菜单
 async function tasksMenu() {
   const { action } = await inquirer.prompt([
@@ -1729,6 +1813,7 @@ async function tasksMenu() {
         { name: '📜 列出所有任务', value: 'list' },
         { name: '📊 查看队列状态', value: 'status' },
         { name: '⚡ 调整任务优先级', value: 'priority' },
+        { name: '✖ 取消任务', value: 'cancel' },
         { name: '◀ 返回主菜单', value: 'back' },
       ],
     },
@@ -1744,6 +1829,9 @@ async function tasksMenu() {
     case 'priority':
       await changeTaskPriority();
       break;
+    case 'cancel':
+      await cancelTask();
+      break;
     case 'back':
       return;
   }
@@ -1757,11 +1845,12 @@ async function mainMenu() {
   const { running, pid } = isServerRunning();
 
   const statusText = running ? chalk.green('[运行中]') : chalk.gray('[未运行]');
+  const versionText = chalk.cyan(`v${version}`);
   const { action } = await inquirer.prompt([
     {
       type: 'list',
       name: 'action',
-      message: `Claude Code Server Manager ${statusText}`,
+      message: `Claude Code Server Manager ${versionText} ${statusText}`,
       pageSize: 15, // 设置菜单显示行数
       choices: [
         { name: '▶ 启动服务', value: 'start', disabled: running ? '已在运行' : false },
