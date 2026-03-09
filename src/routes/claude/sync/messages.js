@@ -104,6 +104,7 @@ function createMessagesRoute(claudeExecutor, config, sessionManager) {
       disallowedTools: validated.disallowedTools,
       agent: validated.agent,
       mcpConfig: validated.mcpConfig,
+      permissionMode: validated.permissionMode,
       stream: validated.stream,
     });
 

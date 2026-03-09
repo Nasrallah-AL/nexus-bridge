@@ -45,6 +45,7 @@ function validateAndParseRequest(req, res, config) {
     agent: req.body.agent,
     mcpConfig: req.body.mcp_config,
     stream: req.body.stream,
+    permissionMode: req.body.permission_mode,
   };
 }
 

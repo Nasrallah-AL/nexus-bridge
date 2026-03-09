@@ -66,6 +66,7 @@ class ClaudeStreamExecutor {
       maxBudgetUsd,
       allowedTools,
       disallowedTools,
+      permissionMode,
     } = options;
 
     // 关键：使用 stream-json 格式
@@ -114,6 +115,12 @@ class ClaudeStreamExecutor {
       args.push('--mcp-config', this.config.mcp.configPath);
     }
 
+    // 添加 permission-mode 参数
+    if (permissionMode) {
+      args.push('--permission-mode', permissionMode);
+      this.logger.info(`Using permission mode: ${permissionMode}`);
+    }
+
     // 权限跳过
     if (this.config.allowDangerouslySkipPermissions === true) {
       args.push('--dangerously-skip-permissions');
@@ -135,6 +142,7 @@ class ClaudeStreamExecutor {
       maxBudgetUsd = this.config.maxBudgetUsd,
       allowedTools = null,
       disallowedTools = null,
+      permissionMode = null,
     } = options;
 
     const startTime = Date.now();
@@ -204,6 +212,7 @@ class ClaudeStreamExecutor {
       maxBudgetUsd,
       allowedTools,
       disallowedTools,
+      permissionMode,
     });
 
     this.logger.info(`Starting stream execution`, {

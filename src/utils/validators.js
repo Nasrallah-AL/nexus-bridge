@@ -73,6 +73,7 @@ class Validators {
       async: Joi.boolean().optional(),
       webhook_url: Joi.string().uri().optional(),
       priority: Joi.number().min(1).max(10).optional(),
+      permission_mode: Joi.string().valid('default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions').optional(),
     });
 
     const { error, value } = schema.validate(data);
@@ -116,6 +117,7 @@ class Validators {
       allowed_tools: Joi.array().items(Joi.string()).optional(),
       disallowed_tools: Joi.array().items(Joi.string()).optional(),
       stream: Joi.boolean().optional(),
+      permission_mode: Joi.string().valid('default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions').optional(),
     });
 
     const { error, value } = schema.validate(data);

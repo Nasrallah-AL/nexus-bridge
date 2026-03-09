@@ -210,6 +210,7 @@ class TaskQueue extends EventEmitter {
         disallowedTools: metadata.disallowed_tools,
         agent: metadata.agent,
         mcpConfig: metadata.mcp_config,
+        permissionMode: metadata.permission_mode,
         onSpawn: (childProcess) => {
           // 保存子进程引用，用于取消时终止
           const active = this.activeTasks.get(taskId);

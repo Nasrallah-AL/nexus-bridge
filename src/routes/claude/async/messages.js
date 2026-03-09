@@ -96,6 +96,7 @@ function createAsyncMessagesRoute(claudeExecutor, config, taskQueue, sessionMana
           disallowed_tools: validated.disallowedTools,
           agent: validated.agent,
           mcp_config: validated.mcpConfig,
+          permission_mode: validated.permissionMode,
         },
       });
 

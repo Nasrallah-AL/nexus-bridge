@@ -98,6 +98,9 @@ class SessionManager {
       sessionId: session.id,
       systemPrompt: options.systemPrompt,
       maxBudgetUsd: options.maxBudgetUsd,
+      allowedTools: options.allowedTools,
+      disallowedTools: options.disallowedTools,
+      permissionMode: options.permission_mode,
       stream: options.stream,
     });
 

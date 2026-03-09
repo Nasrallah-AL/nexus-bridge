@@ -577,6 +577,7 @@ function createSessionRoutes(sessionManager, messageStore = null) {
         maxBudgetUsd: validation.value.max_budget_usd,
         allowedTools: validation.value.allowed_tools,
         disallowedTools: validation.value.disallowed_tools,
+        permissionMode: validation.value.permission_mode,
       }, res);
 
     } catch (error) {

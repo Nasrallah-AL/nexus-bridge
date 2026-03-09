@@ -27,6 +27,7 @@ class ClaudeExecutor {
       allowedTools = null,
       disallowedTools = null,
       agent = null,
+      permissionMode = null,
       stream = false,
     } = options;
 
@@ -87,6 +88,7 @@ class ClaudeExecutor {
         disallowedTools,
         agent,
         mcpConfig: options.mcpConfig,
+        permissionMode,
       });
 
       this.logger.info(`Executing Claude command`, {
@@ -420,6 +422,7 @@ class ClaudeExecutor {
       disallowedTools,
       agent,
       mcpConfig,
+      permissionMode,
     } = options;
 
     const args = ['-p', prompt, '--output-format', 'json'];
@@ -471,6 +474,12 @@ class ClaudeExecutor {
     const mcpConfigPath = mcpConfig || (this.config.mcp?.enabled ? this.config.mcp.configPath : null);
     if (mcpConfigPath) {
       args.push('--mcp-config', mcpConfigPath);
+    }
+
+    // 添加 permission-mode 参数
+    if (permissionMode) {
+      args.push('--permission-mode', permissionMode);
+      this.logger.info(`Using permission mode: ${permissionMode}`);
     }
 
     // 根据配置决定是否跳过权限检查（默认不跳过）
