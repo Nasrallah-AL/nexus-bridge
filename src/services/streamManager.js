@@ -55,9 +55,9 @@ class StreamManager {
    * 通过 session_id 获取活跃的流式任务
    */
   getStreamBySession(sessionId) {
-    for (const [streamId, stream] of this.activeStreams) {
+    for (const [, stream] of this.activeStreams) {
       if (stream.session_id === sessionId && stream.status === 'streaming') {
-        return { stream_id: streamId, ...stream };
+        return stream;
       }
     }
     return null;

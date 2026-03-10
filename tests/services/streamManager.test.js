@@ -145,4 +145,35 @@ describe('StreamManager', () => {
       expect(streamManager.activeStreams.has(streamId)).toBe(false);
     });
   });
+
+  describe('cleanupCompletedStreams', () => {
+    test('should remove completed streams older than maxAge', () => {
+      const mockProcess = { pid: 12345, kill: jest.fn() };
+      const streamId = streamManager.registerStream('session-1', mockProcess);
+
+      // Complete the stream
+      streamManager.completeStream(streamId, {});
+
+      // Set completed_at to 2 hours ago
+      const stream = streamManager.getStream(streamId);
+      stream.completed_at = Date.now() - 7200000; // 2 hours ago
+
+      // Cleanup with 1 hour max age
+      streamManager.cleanupCompletedStreams(3600000);
+
+      expect(streamManager.activeStreams.has(streamId)).toBe(false);
+    });
+
+    test('should keep recently completed streams', () => {
+      const mockProcess = { pid: 12345, kill: jest.fn() };
+      const streamId = streamManager.registerStream('session-1', mockProcess);
+
+      streamManager.completeStream(streamId, {});
+
+      // Cleanup with 1 hour max age
+      streamManager.cleanupCompletedStreams(3600000);
+
+      expect(streamManager.activeStreams.has(streamId)).toBe(true);
+    });
+  });
 });
