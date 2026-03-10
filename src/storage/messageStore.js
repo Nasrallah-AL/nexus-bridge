@@ -336,8 +336,8 @@ class MessageStore {
    * @param {string} sessionId - Session ID
    * @param {string} messageId - 消息 ID
    * @param {string} chunk - 要追加的内容
-   * @returns {Promise<boolean>} 是否成功
-   * @throws {Error} 如果消息不存在或不是流式消息
+   * @returns {Promise<boolean>} true if updated, false if message not found
+   * @throws {Error} 如果消息不是流式消息
    */
   async updateStreamingContent(sessionId, messageId, chunk) {
     const data = await this.readSessionMessages(sessionId);
@@ -369,7 +369,8 @@ class MessageStore {
    * @param {object} metadata - 完成时的元数据
    * @param {number} [metadata.cost_usd] - 费用
    * @param {number} [metadata.duration_ms] - 持续时间
-   * @returns {Promise<object|null>} 更新后的消息或 null
+   * @returns {Promise<object|null>} completed message or null if not found
+   * @throws {Error} 如果消息不是 streaming 状态
    */
   async completeStreamingMessage(sessionId, messageId, metadata = {}) {
     const data = await this.readSessionMessages(sessionId);
@@ -381,6 +382,11 @@ class MessageStore {
 
     const now = this.now();
     const message = data.messages[messageIndex];
+
+    // 验证消息状态必须是 streaming
+    if (message.status !== 'streaming') {
+      throw new Error(`Cannot complete message with status '${message.status}'. Only 'streaming' messages can be completed.`);
+    }
 
     // 更新状态和元数据
     data.messages[messageIndex] = {
@@ -405,7 +411,7 @@ class MessageStore {
    * 根据 stream_id 查找消息
    * @param {string} sessionId - Session ID
    * @param {string} streamId - 流式消息 ID
-   * @returns {Promise<object|null>} 找到的消息或 null
+   * @returns {Promise<object|null>} message or null if not found
    */
   async getStreamingMessage(sessionId, streamId) {
     const data = await this.readSessionMessages(sessionId);

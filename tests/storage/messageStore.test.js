@@ -217,6 +217,17 @@ describe('MessageStore', () => {
         expect(result.metadata.custom_field).toBe('custom_value');
         expect(result.metadata.stream_id).toBe('stream_complete_2');
       });
+
+      test('should throw when completing non-streaming message', async () => {
+        // First create and complete a streaming message
+        const msg = await messageStore.addStreamingMessage('session-1');
+        await messageStore.completeStreamingMessage('session-1', msg.id);
+
+        // Try to complete it again
+        await expect(
+          messageStore.completeStreamingMessage('session-1', msg.id)
+        ).rejects.toThrow(/Cannot complete message with status 'completed'/);
+      });
     });
 
     describe('getStreamingMessage', () => {
