@@ -2,8 +2,11 @@ const Validators = require('../utils/validators');
 
 /**
  * 创建会话路由
+ * @param {Object} sessionManager - Session manager service
+ * @param {Object} messageStore - Message store service (optional)
+ * @param {Object} streamManager - Stream manager service (optional)
  */
-function createSessionRoutes(sessionManager, messageStore = null) {
+function createSessionRoutes(sessionManager, messageStore = null, streamManager = null) {
   const router = require('express').Router();
 
   /**
@@ -566,7 +569,8 @@ function createSessionRoutes(sessionManager, messageStore = null) {
         sessionManager.config,
         sessionManager.sessionStore,
         sessionManager.statsStore,
-        messageStore  // 传递 messageStore
+        messageStore,  // 传递 messageStore
+        streamManager  // 传递 streamManager
       );
 
       await streamExecutor.executeStream({
@@ -779,6 +783,247 @@ function createSessionRoutes(sessionManager, messageStore = null) {
         success: false,
         error: error.message,
       });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/sessions/{id}/stream/status:
+   *   get:
+   *     summary: Check active stream status for session
+   *     description: |
+   *       Check if there's an active streaming task for this session.
+   *       Returns stream details if an active stream exists.
+   *     tags: [Sessions]
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         description: Session UUID
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       '200':
+   *         description: Stream status retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 has_active_stream:
+   *                   type: boolean
+   *                 stream:
+   *                   type: object
+   *                   properties:
+   *                     stream_id:
+   *                       type: string
+   *                     status:
+   *                       type: string
+   *                     content_length:
+   *                       type: integer
+   *                     started_at:
+   *                       type: integer
+   *       '404':
+   *         description: Session not found
+   *       '501':
+   *         description: Stream resume feature not available
+   */
+  // GET /api/sessions/:id/stream/status - 检查会话的活跃流状态
+  router.get('/:id/stream/status', async (req, res) => {
+    // 检查 streamManager 是否可用
+    if (!streamManager) {
+      return res.status(501).json({
+        success: false,
+        error: 'Stream resume feature is not available',
+      });
+    }
+
+    try {
+      // 检查会话是否存在
+      const session = await sessionManager.getSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({
+          success: false,
+          error: 'Session not found',
+        });
+      }
+
+      // 获取该会话的活跃流
+      const activeStream = streamManager.getStreamBySession(req.params.id);
+
+      if (!activeStream) {
+        return res.json({
+          success: true,
+          has_active_stream: false,
+        });
+      }
+
+      // 返回活跃流信息
+      res.json({
+        success: true,
+        has_active_stream: true,
+        stream: {
+          stream_id: activeStream.stream_id,
+          status: activeStream.status,
+          content_length: activeStream.content.length,
+          started_at: activeStream.started_at,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  });
+
+  /**
+   * @swagger
+   * /api/sessions/{id}/stream/resume:
+   *   get:
+   *     summary: Resume or reconnect to a stream
+   *     description: |
+   *       Reconnect to an active or completed stream.
+   *       For completed streams, returns full content as JSON.
+   *       For ongoing streams, returns SSE stream with resumed content.
+   *     tags: [Sessions]
+   *     parameters:
+   *       - name: id
+   *         in: path
+   *         description: Session UUID
+   *         required: true
+   *         schema:
+   *           type: string
+   *       - name: stream_id
+   *         in: query
+   *         description: The stream ID to resume
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       '200':
+   *         description: Stream resumed successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 status:
+   *                   type: string
+   *                 stream_id:
+   *                   type: string
+   *                 content:
+   *                   type: string
+   *                 metadata:
+   *                   type: object
+   *           text/event-stream:
+   *             schema:
+   *               type: string
+   *               description: SSE stream for ongoing streams
+   *       '400':
+   *         description: Invalid request (missing stream_id or stream belongs to different session)
+   *       '404':
+   *         description: Session or stream not found
+   *       '501':
+   *         description: Stream resume feature not available
+   */
+  // GET /api/sessions/:id/stream/resume - 恢复或重连流
+  router.get('/:id/stream/resume', async (req, res) => {
+    // 检查 streamManager 是否可用
+    if (!streamManager) {
+      return res.status(501).json({
+        success: false,
+        error: 'Stream resume feature is not available',
+      });
+    }
+
+    const { stream_id: streamId } = req.query;
+
+    // 验证 stream_id 参数
+    if (!streamId) {
+      return res.status(400).json({
+        success: false,
+        error: 'stream_id is required',
+      });
+    }
+
+    try {
+      // 检查会话是否存在
+      const session = await sessionManager.getSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({
+          success: false,
+          error: 'Session not found',
+        });
+      }
+
+      // 获取流
+      const stream = streamManager.getStream(streamId);
+      if (!stream) {
+        return res.status(404).json({
+          success: false,
+          error: 'Stream not found',
+        });
+      }
+
+      // 验证流属于该会话
+      if (stream.session_id !== req.params.id) {
+        return res.status(400).json({
+          success: false,
+          error: 'Stream does not belong to this session',
+        });
+      }
+
+      // 如果流已完成，返回完整内容
+      if (stream.status === 'completed') {
+        return res.json({
+          success: true,
+          status: 'completed',
+          stream_id: streamId,
+          content: stream.content,
+          metadata: stream.metadata,
+        });
+      }
+
+      // 对于正在进行的流，返回 SSE 流
+      // 设置 SSE 响应头
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Session-Id', req.params.id);
+      res.setHeader('X-Stream-Id', streamId);
+      res.flushHeaders();
+
+      // 发送已累积的内容
+      const resumedEvent = {
+        type: 'resumed',
+        content: stream.content,
+      };
+      res.write(`event: message\ndata: ${JSON.stringify(resumedEvent)}\n\n`);
+
+      // 添加客户端到流
+      streamManager.addClient(streamId, res);
+
+      // 处理客户端断开连接
+      res.on('close', () => {
+        streamManager.removeClient(streamId, res);
+      });
+    } catch (error) {
+      // 如果还没有发送headers，发送JSON错误
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+        });
+      } else {
+        // 已经开始流式输出，发送SSE错误
+        res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
+        res.end();
+      }
     }
   });
 
