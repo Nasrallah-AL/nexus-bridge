@@ -282,6 +282,136 @@ class MessageStore {
     const data = await this.readSessionMessages(sessionId);
     return data.count;
   }
+
+  /**
+   * 生成流式消息 ID
+   */
+  generateStreamId() {
+    return `stream_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
+  }
+
+  /**
+   * 创建流式消息
+   * @param {string} sessionId - Session ID
+   * @param {object} options - 选项
+   * @param {string} [options.stream_id] - 流式消息 ID（可选，自动生成）
+   * @param {string} [options.model] - 模型名称
+   * @returns {Promise<object>} 创建的消息对象
+   */
+  async addStreamingMessage(sessionId, options = {}) {
+    const data = await this.readSessionMessages(sessionId);
+    const now = this.now();
+
+    const streamId = options.stream_id || this.generateStreamId();
+
+    const newMessage = {
+      id: this.generateId(),
+      session_id: sessionId,
+      role: 'assistant',
+      content: '',
+      status: 'streaming',
+      created_at: now,
+      metadata: {
+        stream_id: streamId,
+        model: options.model || null,
+        started_at: now,
+        completed_at: null,
+        cost_usd: null,
+        duration_ms: null,
+        ...(options.custom_field ? { custom_field: options.custom_field } : {}),
+      },
+    };
+
+    data.messages.push(newMessage);
+    data.count = data.messages.length;
+    data.updated_at = now;
+
+    await this.writeSessionMessages(sessionId, data);
+
+    return newMessage;
+  }
+
+  /**
+   * 更新流式消息内容（追加内容）
+   * @param {string} sessionId - Session ID
+   * @param {string} messageId - 消息 ID
+   * @param {string} chunk - 要追加的内容
+   * @returns {Promise<boolean>} 是否成功
+   * @throws {Error} 如果消息不存在或不是流式消息
+   */
+  async updateStreamingContent(sessionId, messageId, chunk) {
+    const data = await this.readSessionMessages(sessionId);
+    const messageIndex = data.messages.findIndex(m => m.id === messageId);
+
+    if (messageIndex === -1) {
+      return false;
+    }
+
+    const message = data.messages[messageIndex];
+
+    if (message.status !== 'streaming') {
+      throw new Error(`Message ${messageId} is not a streaming message`);
+    }
+
+    // 追加内容
+    data.messages[messageIndex].content = (message.content || '') + chunk;
+    data.updated_at = this.now();
+
+    await this.writeSessionMessages(sessionId, data);
+
+    return true;
+  }
+
+  /**
+   * 完成流式消息
+   * @param {string} sessionId - Session ID
+   * @param {string} messageId - 消息 ID
+   * @param {object} metadata - 完成时的元数据
+   * @param {number} [metadata.cost_usd] - 费用
+   * @param {number} [metadata.duration_ms] - 持续时间
+   * @returns {Promise<object|null>} 更新后的消息或 null
+   */
+  async completeStreamingMessage(sessionId, messageId, metadata = {}) {
+    const data = await this.readSessionMessages(sessionId);
+    const messageIndex = data.messages.findIndex(m => m.id === messageId);
+
+    if (messageIndex === -1) {
+      return null;
+    }
+
+    const now = this.now();
+    const message = data.messages[messageIndex];
+
+    // 更新状态和元数据
+    data.messages[messageIndex] = {
+      ...message,
+      status: 'completed',
+      metadata: {
+        ...message.metadata,
+        completed_at: now,
+        cost_usd: metadata.cost_usd ?? null,
+        duration_ms: metadata.duration_ms ?? null,
+      },
+    };
+
+    data.updated_at = now;
+
+    await this.writeSessionMessages(sessionId, data);
+
+    return data.messages[messageIndex];
+  }
+
+  /**
+   * 根据 stream_id 查找消息
+   * @param {string} sessionId - Session ID
+   * @param {string} streamId - 流式消息 ID
+   * @returns {Promise<object|null>} 找到的消息或 null
+   */
+  async getStreamingMessage(sessionId, streamId) {
+    const data = await this.readSessionMessages(sessionId);
+    const message = data.messages.find(m => m.metadata && m.metadata.stream_id === streamId);
+    return message || null;
+  }
 }
 
 module.exports = MessageStore;
