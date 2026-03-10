@@ -236,6 +236,7 @@ async function main() {
   const TaskQueue = require('./src/services/taskQueue');
   const WebhookNotifier = require('./src/services/webhookNotifier');
   const AuditLogger = require('./src/services/auditLogger');
+  const StreamManager = require('./src/services/streamManager');
 
   const claudeExecutor = new ClaudeExecutor(config, sessionStore, statsStore, messageStore);
   const sessionManager = new SessionManager(config, sessionStore, claudeExecutor, messageStore);
@@ -244,6 +245,7 @@ async function main() {
   const webhookNotifier = new WebhookNotifier(config);
   const taskQueue = new TaskQueue(config, taskStore, claudeExecutor, webhookNotifier);
   const auditLogger = new AuditLogger(config, statsStore);
+  const streamManager = new StreamManager(config);
 
   // 加载路由
   const createHealthRoute = require('./src/routes/health');
@@ -280,7 +282,7 @@ async function main() {
   app.use('/api/messages', createClaudeRoutes(claudeExecutor, config, null, sessionManager));
   // Asynchronous message processing
   app.use('/api/async/messages', createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager));
-  app.use('/api/sessions', createSessionRoutes(sessionManager, messageStore));
+  app.use('/api/sessions', createSessionRoutes(sessionManager, messageStore, streamManager));
   app.use('/api/projects', createProjectsRoutes(sessionStore, config, messageStore));
   app.use('/api/statistics', createStatisticsRoutes(statisticsCollector));
   app.use('/api/tasks', createTaskRoutes(taskQueue));
