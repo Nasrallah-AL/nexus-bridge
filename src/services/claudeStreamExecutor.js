@@ -6,22 +6,26 @@ const getLogger = require('../utils/logger');
  * 使用 --output-format stream-json 输出 SSE 事件流
  */
 class ClaudeStreamExecutor {
-  constructor(config, sessionStore = null, statsStore = null, messageStore = null) {
+  constructor(config, sessionStore = null, statsStore = null, messageStore = null, streamManager = null) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.statsStore = statsStore;
     this.messageStore = messageStore;
+    this.streamManager = streamManager;
     this.logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
   }
 
   /**
    * 设置 SSE 响应头
    */
-  setupSSEResponse(res, sessionId) {
+  setupSSEResponse(res, sessionId, streamId = null) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Session-Id', sessionId);
+    if (streamId) {
+      res.setHeader('X-Stream-Id', streamId);
+    }
     res.flushHeaders(); // 立即发送headers
   }
 
@@ -158,8 +162,35 @@ class ClaudeStreamExecutor {
       }
     }
 
+    // 生成 streamId 和创建流式消息（如果 streamManager 可用）
+    let streamId = null;
+    let streamingMessageId = null;
+    if (this.streamManager && this.messageStore && sessionId) {
+      try {
+        streamId = this.streamManager.generateStreamId();
+        const streamingMessage = await this.messageStore.addStreamingMessage(sessionId, {
+          stream_id: streamId,
+          model,
+        });
+        streamingMessageId = streamingMessage.id;
+        this.logger.debug(`Created streaming message`, {
+          session_id: sessionId,
+          stream_id: streamId,
+          message_id: streamingMessageId,
+        });
+      } catch (err) {
+        this.logger.warn(`Failed to create streaming message`, {
+          session_id: sessionId,
+          error: err.message,
+        });
+        // 流式消息创建失败不影响主流程，继续执行但不支持续传
+        streamId = null;
+        streamingMessageId = null;
+      }
+    }
+
     // 设置 SSE 响应头
-    this.setupSSEResponse(res, sessionId);
+    this.setupSSEResponse(res, sessionId, streamId);
 
     // 预算检查
     if (sessionId && maxBudgetUsd && this.sessionStore) {
@@ -219,16 +250,17 @@ class ClaudeStreamExecutor {
       session_id: sessionId,
       project_path: projectPath,
       model,
+      stream_id: streamId,
     });
 
     // 执行流式命令
-    this.spawnStreamCommand(projectPath, args, res, Date.now(), sessionId, model);
+    this.spawnStreamCommand(projectPath, args, res, Date.now(), sessionId, model, streamId, streamingMessageId);
   }
 
   /**
    * 生成流式命令并处理输出
    */
-  spawnStreamCommand(projectPath, args, res, startTime, sessionId, model) {
+  spawnStreamCommand(projectPath, args, res, startTime, sessionId, model, streamId = null, streamingMessageId = null) {
     const env = { ...process.env };
 
     if (this.config.nodeBinDir) {
@@ -249,11 +281,31 @@ class ClaudeStreamExecutor {
     let thinkingContent = '';
     // 从 message_start 事件中获取实际使用的模型
     let actualModel = model;
+    // 跟踪原始客户端是否已断开
+    let clientDisconnected = false;
+
+    // 如果有 streamManager，注册流并添加客户端
+    if (streamId && this.streamManager) {
+      this.streamManager.registerStream(sessionId, child, streamId);
+      this.streamManager.addClient(streamId, res);
+    }
 
     // 处理客户端断开连接
     res.on('close', () => {
-      this.logger.info(`Client disconnected, killing Claude process`, { session_id: sessionId });
-      child.kill('SIGTERM');
+      clientDisconnected = true;
+
+      // 如果有 streamManager，只移除客户端，不终止进程
+      if (streamId && this.streamManager) {
+        this.logger.info(`Client disconnected, removing from stream (process continues)`, {
+          session_id: sessionId,
+          stream_id: streamId,
+        });
+        this.streamManager.removeClient(streamId, res);
+      } else {
+        // 旧行为：终止进程
+        this.logger.info(`Client disconnected, killing Claude process`, { session_id: sessionId });
+        child.kill('SIGTERM');
+      }
     });
 
     // 处理 stdout - JSONL 格式
@@ -267,8 +319,15 @@ class ClaudeStreamExecutor {
           try {
             const json = JSON.parse(line);
 
-            // 转发所有事件到客户端
-            this.sendSSEEvent(res, 'message', json);
+            // 转发所有事件到客户端（如果客户端还连接）
+            if (!clientDisconnected) {
+              this.sendSSEEvent(res, 'message', json);
+            }
+
+            // 如果有 streamManager，广播到所有客户端
+            if (streamId && this.streamManager) {
+              this.streamManager.broadcast(streamId, 'message', json);
+            }
 
             // 从 message_start 事件中提取实际使用的模型
             if (json.type === 'stream_event' && json.event?.type === 'message_start' && json.event?.message?.model) {
@@ -283,6 +342,17 @@ class ClaudeStreamExecutor {
                   thinkingContent += block.thinking;
                 } else if (block.type === 'text' && block.text) {
                   assistantContent.push({ type: 'text', text: block.text });
+
+                  // 更新流式消息内容
+                  if (streamingMessageId && this.messageStore && sessionId) {
+                    this.messageStore.updateStreamingContent(sessionId, streamingMessageId, block.text).catch(err => {
+                      this.logger.warn(`Failed to update streaming content`, {
+                        session_id: sessionId,
+                        message_id: streamingMessageId,
+                        error: err.message,
+                      });
+                    });
+                  }
                 }
               }
             }
@@ -325,6 +395,31 @@ class ClaudeStreamExecutor {
     child.on('close', async (code) => {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
+
+      // 完成流式任务（如果有 streamManager）
+      if (streamId && this.streamManager) {
+        this.streamManager.completeStream(streamId, {
+          cost_usd: totalCost,
+          duration_ms: duration,
+          success: code === 0,
+        });
+      }
+
+      // 完成流式消息（如果有 streamingMessageId）
+      if (streamingMessageId && this.messageStore && sessionId) {
+        try {
+          await this.messageStore.completeStreamingMessage(sessionId, streamingMessageId, {
+            cost_usd: totalCost,
+            duration_ms: duration,
+          });
+        } catch (err) {
+          this.logger.warn(`Failed to complete streaming message`, {
+            session_id: sessionId,
+            message_id: streamingMessageId,
+            error: err.message,
+          });
+        }
+      }
 
       if (code !== 0) {
         this.logger.error(`Claude process exited with code ${code}`, { session_id: sessionId });

@@ -23,13 +23,14 @@ class StreamManager {
    * 注册新的流式任务
    * @param {string} sessionId - Session ID
    * @param {ChildProcess} childProcess - Claude CLI 子进程
+   * @param {string} streamId - Optional stream ID (generated if not provided)
    * @returns {string} stream_id
    */
-  registerStream(sessionId, childProcess) {
-    const streamId = this.generateStreamId();
+  registerStream(sessionId, childProcess, streamId = null) {
+    const finalStreamId = streamId || this.generateStreamId();
 
-    this.activeStreams.set(streamId, {
-      stream_id: streamId,
+    this.activeStreams.set(finalStreamId, {
+      stream_id: finalStreamId,
       session_id: sessionId,
       childProcess,
       clients: [],
@@ -39,9 +40,9 @@ class StreamManager {
       metadata: {},
     });
 
-    this.logger.info('Stream registered', { stream_id: streamId, session_id: sessionId });
+    this.logger.info('Stream registered', { stream_id: finalStreamId, session_id: sessionId });
 
-    return streamId;
+    return finalStreamId;
   }
 
   /**
