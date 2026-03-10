@@ -468,6 +468,45 @@ All configuration and data files are stored in `~/.claude-code-server/`:
 - `server.pid` - Process ID file
 - `data/` - Data storage (sessions, tasks, statistics)
 
+## 🧪 Testing
+
+The project uses Jest as the testing framework with comprehensive test coverage.
+
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Generate coverage report
+npm run test:coverage
+```
+
+### Test Structure
+
+```
+tests/
+├── storage/
+│   └── baseStore.test.js      # File lock mechanism tests
+├── utils/
+│   └── keyGenerator.test.js   # Key generation tests
+└── routes/
+    └── health.test.js         # Health endpoint tests
+```
+
+### Writing Tests
+
+Tests are located in the `tests/` directory and follow the naming convention `*.test.js`. The test suite includes:
+
+- **Unit Tests** - Testing individual functions and modules
+- **Integration Tests** - Testing API endpoints with supertest
+- **File Lock Tests** - Testing concurrent access and deadlock prevention
+
+Coverage reports are generated in the `coverage/` directory (excluded from git).
+
 ## 🔒 Security Recommendations
 
 1. **API Authentication** - Add API keys or OAuth authentication at the reverse proxy layer

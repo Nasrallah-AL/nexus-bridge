@@ -66,16 +66,71 @@ class BaseStore {
   }
 
   /**
+   * Check if a process is alive
+   */
+  isProcessAlive(pid) {
+    try {
+      // process.kill with signal 0 doesn't actually kill the process
+      // It just checks if the process exists
+      process.kill(pid, 0);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /**
+   * Clean up stale lock file
+   */
+  cleanupStaleLock() {
+    try {
+      if (!fs.existsSync(this.lockFilePath)) {
+        return false;
+      }
+
+      const lockContent = fs.readFileSync(this.lockFilePath, 'utf8');
+      const lockData = JSON.parse(lockContent);
+      const currentTime = Date.now();
+      const lockAge = currentTime - lockData.timestamp;
+      const LOCK_EXPIRY = 60000; // 1 minute
+
+      // Check if lock is expired or process is dead
+      if (lockAge > LOCK_EXPIRY || !this.isProcessAlive(lockData.pid)) {
+        fs.unlinkSync(this.lockFilePath);
+        return true;
+      }
+
+      return false;
+    } catch (err) {
+      // If we can't read/parse the lock file, it's likely corrupted - remove it
+      try {
+        fs.unlinkSync(this.lockFilePath);
+        return true;
+      } catch (unlinkErr) {
+        return false;
+      }
+    }
+  }
+
+  /**
    * 获取文件锁
    */
   async acquireLock(timeout = 5000) {
     const startTime = Date.now();
+    const lockId = crypto.randomUUID();
+    const lockData = {
+      lockId,
+      pid: process.pid,
+      timestamp: Date.now()
+    };
 
     while (Date.now() - startTime < timeout) {
       try {
+        // Try to clean up stale locks first
+        this.cleanupStaleLock();
+
         // 尝试创建锁文件（O_EXCL 标志确保原子性）
-        const lockId = crypto.randomUUID();
-        fs.writeFileSync(this.lockFilePath, lockId, { flag: 'wx' });
+        fs.writeFileSync(this.lockFilePath, JSON.stringify(lockData), { flag: 'wx' });
         return lockId;
       } catch (err) {
         if (err.code === 'EEXIST') {
@@ -96,12 +151,13 @@ class BaseStore {
   releaseLock(lockId) {
     try {
       // 验证锁文件中的 ID 是否匹配
-      const currentLockId = fs.readFileSync(this.lockFilePath, 'utf8');
-      if (currentLockId === lockId) {
+      const lockContent = fs.readFileSync(this.lockFilePath, 'utf8');
+      const lockData = JSON.parse(lockContent);
+      if (lockData.lockId === lockId) {
         fs.unlinkSync(this.lockFilePath);
       }
     } catch (err) {
-      // 忽略错误
+      // 忽略错误（文件可能已被其他进程清理）
     }
   }
 

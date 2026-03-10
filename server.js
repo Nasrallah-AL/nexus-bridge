@@ -261,7 +261,7 @@ async function main() {
   const HOST = process.env.HOST || config.host;
 
   // 中间件
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' })); // Prevent DoS attacks with large payloads
 
   // Create authentication middleware
   const authMiddleware = createAuthMiddleware(config, auditLogger);
