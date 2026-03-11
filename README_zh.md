@@ -297,7 +297,7 @@ Claude Code Server 支持多 Provider 负载均衡与会话绑定，可以将请
 |------|------|--------|------|
 | `providers[].id` | string | 必填 | Provider 唯一标识 |
 | `providers[].name` | string | 必填 | 显示名称 |
-| `providers[].apiKey` | string | 必填 | Anthropic API Key（注入为 `ANTHROPIC_API_KEY`） |
+| `providers[].apiKey` | string | 必填 | Auth Token（注入为 `ANTHROPIC_AUTH_TOKEN` 和 `ANTHROPIC_API_KEY`） |
 | `providers[].baseUrl` | string | 可选 | API 端点 URL（注入为 `ANTHROPIC_BASE_URL`） |
 | `providers[].env` | object | 可选 | 额外的环境变量配置 |
 | `providers[].weight` | number | 1 | 权重策略的权重值（1-10） |

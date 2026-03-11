@@ -296,7 +296,7 @@ Add `providers` and `loadBalance` sections to your `~/.claude-code-server/config
 |-------|------|---------|-------------|
 | `providers[].id` | string | required | Unique provider identifier |
 | `providers[].name` | string | required | Display name |
-| `providers[].apiKey` | string | required | Anthropic API key (injected as `ANTHROPIC_API_KEY`) |
+| `providers[].apiKey` | string | required | Auth Token (injected as `ANTHROPIC_AUTH_TOKEN` and `ANTHropic_api_key`) |
 | `providers[].baseUrl` | string | optional | API endpoint URL (injected as `ANTHROPIC_BASE_URL`) |
 | `providers[].env` | object | optional | Additional environment variables to inject |
 | `providers[].weight` | number | 1 | Weight for weighted strategy (1-10) |
