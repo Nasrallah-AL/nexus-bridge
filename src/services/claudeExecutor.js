@@ -285,6 +285,16 @@ class ClaudeExecutor {
 
       // Inject Provider environment variables for load balancing
       if (provider) {
+        this.logger.info(`Injecting provider env vars`, {
+          provider_id: provider.id,
+          provider_name: provider.name,
+          has_apiKey: !!provider.apiKey,
+          apiKey_prefix: provider.apiKey ? provider.apiKey.substring(0, 8) + '...' : null,
+          has_baseUrl: !!provider.baseUrl,
+          baseUrl: provider.baseUrl,
+          has_custom_env: !!(provider.env && Object.keys(provider.env).length > 0),
+        });
+
         if (provider.apiKey) {
           // Claude CLI uses ANTHROPIC_AUTH_TOKEN, not ANTHROPIC_API_KEY
           // Set both for compatibility with different tools
@@ -302,6 +312,14 @@ class ClaudeExecutor {
             }
           }
         }
+
+        this.logger.info(`Provider env vars injected`, {
+          ANTHROPIC_AUTH_TOKEN_set: !!env.ANTHROPIC_AUTH_TOKEN,
+          ANTHROPIC_API_KEY_set: !!env.ANTHROPIC_API_KEY,
+          ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL,
+        });
+      } else {
+        this.logger.warn(`No provider selected, using system env vars`);
       }
 
       // 确保项目目录存在
