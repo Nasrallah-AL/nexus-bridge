@@ -287,7 +287,7 @@ async function main() {
   app.use('/api/messages', createClaudeRoutes(claudeExecutor, config, null, sessionManager, providerRouter));
   // Asynchronous message processing
   app.use('/api/async/messages', createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager, providerRouter));
-  app.use('/api/sessions', createSessionRoutes(sessionManager, messageStore, streamManager));
+  app.use('/api/sessions', createSessionRoutes(sessionManager, messageStore, streamManager, providerRouter));
   app.use('/api/projects', createProjectsRoutes(sessionStore, config, messageStore));
   app.use('/api/statistics', createStatisticsRoutes(statisticsCollector));
   app.use('/api/tasks', createTaskRoutes(taskQueue));

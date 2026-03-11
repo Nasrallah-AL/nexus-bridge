@@ -6,12 +6,13 @@ const getLogger = require('../utils/logger');
  * 使用 --output-format stream-json 输出 SSE 事件流
  */
 class ClaudeStreamExecutor {
-  constructor(config, sessionStore = null, statsStore = null, messageStore = null, streamManager = null) {
+  constructor(config, sessionStore = null, statsStore = null, messageStore = null, streamManager = null, providerRouter = null) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.statsStore = statsStore;
     this.messageStore = messageStore;
     this.streamManager = streamManager;
+    this.providerRouter = providerRouter;
     this.logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
   }
 
@@ -147,7 +148,19 @@ class ClaudeStreamExecutor {
       allowedTools = null,
       disallowedTools = null,
       permissionMode = null,
+      providerId = null,  // Optional: force specific provider
     } = options;
+
+    // Select provider for load balancing
+    let provider = null;
+    if (this.providerRouter) {
+      provider = this.providerRouter.select(sessionId, providerId);
+      this.logger.info(`Selected provider for stream`, {
+        session_id: sessionId,
+        provider_id: provider?.id || 'none',
+        forced: !!providerId,
+      });
+    }
 
     const startTime = Date.now();
 
@@ -254,17 +267,38 @@ class ClaudeStreamExecutor {
     });
 
     // 执行流式命令
-    this.spawnStreamCommand(projectPath, args, res, Date.now(), sessionId, model, streamId, streamingMessageId);
+    this.spawnStreamCommand(projectPath, args, res, Date.now(), sessionId, model, streamId, streamingMessageId, provider);
   }
 
   /**
    * 生成流式命令并处理输出
    */
-  spawnStreamCommand(projectPath, args, res, startTime, sessionId, model, streamId = null, streamingMessageId = null) {
+  spawnStreamCommand(projectPath, args, res, startTime, sessionId, model, streamId = null, streamingMessageId = null, provider = null) {
     const env = { ...process.env };
 
     if (this.config.nodeBinDir) {
       env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
+    }
+
+    // Inject Provider environment variables for load balancing
+    if (provider) {
+      if (provider.apiKey) {
+        // Claude CLI uses ANTHROPIC_AUTH_TOKEN, not ANTHROPIC_API_KEY
+        // Set both for compatibility with different tools
+        env.ANTHROPIC_AUTH_TOKEN = provider.apiKey;
+        env.ANTHROPIC_API_KEY = provider.apiKey;
+      }
+      if (provider.baseUrl) {
+        env.ANTHROPIC_BASE_URL = provider.baseUrl;
+      }
+      // Inject additional custom environment variables from provider.env
+      if (provider.env && typeof provider.env === 'object') {
+        for (const [key, value] of Object.entries(provider.env)) {
+          if (value !== undefined && value !== null) {
+            env[key] = String(value);
+          }
+        }
+      }
     }
 
     const child = spawn(this.config.claudePath, args, {
