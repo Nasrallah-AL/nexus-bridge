@@ -1,4 +1,7 @@
 const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const getLogger = require('../utils/logger');
 
 /**
@@ -283,6 +286,18 @@ class ClaudeExecutor {
         env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
       }
 
+      // Create temporary HOME directory to isolate from local ~/.claude/settings.json
+      // This ensures provider environment variables take precedence
+      const fs = require('fs');
+      const os = require('os');
+      const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-exec-'));
+      env.HOME = tmpHome;
+
+      this.logger.info(`Created temporary HOME directory`, {
+        tmpHome,
+        reason: 'Isolate from local ~/.claude/settings.json',
+      });
+
       // Inject Provider environment variables for load balancing
       if (provider) {
         this.logger.info(`Injecting provider env vars`, {
@@ -323,11 +338,12 @@ class ClaudeExecutor {
       }
 
       // 确保项目目录存在
-      const fs = require('fs');
       if (!fs.existsSync(projectPath)) {
         try {
           fs.mkdirSync(projectPath, { recursive: true });
         } catch (mkdirErr) {
+          // Clean up temp HOME directory on error
+          try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch (e) {}
           const error = new Error(`Failed to create project directory: ${mkdirErr.message}`);
           error.details = {
             projectPath,
@@ -367,6 +383,18 @@ class ClaudeExecutor {
 
       child.on('close', (code) => {
         clearTimeout(timeout);
+
+        // Cleanup temporary HOME directory
+        try {
+          fs.rmSync(tmpHome, { recursive: true, force: true });
+          this.logger.debug(`Cleaned up temporary HOME directory`, { tmpHome });
+        } catch (cleanupErr) {
+          this.logger.warn(`Failed to cleanup temporary HOME directory`, {
+            tmpHome,
+            error: cleanupErr.message,
+          });
+        }
+
         const output = stdout || stderr;
 
         if (code !== 0) {
@@ -406,6 +434,13 @@ class ClaudeExecutor {
 
       child.on('error', (err) => {
         clearTimeout(timeout);
+
+        // Cleanup temporary HOME directory on error
+        try {
+          fs.rmSync(tmpHome, { recursive: true, force: true });
+        } catch (cleanupErr) {
+          // Ignore cleanup errors
+        }
 
         // 根据错误类型提供更友好的错误信息
         let errorMessage = `Failed to start Claude CLI: ${err.message}`;

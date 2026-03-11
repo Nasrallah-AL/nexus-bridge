@@ -2326,7 +2326,7 @@ async function editProvider() {
     {
       type: 'input',
       name: 'apiKey',
-      message: 'Auth Token (留空保持不变):',
+      message: 'API Key (留空保持不变):',
     },
     {
       type: 'input',

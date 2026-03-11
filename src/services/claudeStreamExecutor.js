@@ -274,15 +274,30 @@ class ClaudeStreamExecutor {
    * 生成流式命令并处理输出
    */
   spawnStreamCommand(projectPath, args, res, startTime, sessionId, model, streamId = null, streamingMessageId = null, provider = null) {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+
     const env = { ...process.env };
 
     if (this.config.nodeBinDir) {
       env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
     }
 
+    // Create temporary HOME directory to isolate from local ~/.claude/settings.json
+    // This ensures provider environment variables take precedence
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-stream-'));
+    env.HOME = tmpHome;
+
+    this.logger.info(`Created temporary HOME directory for stream`, {
+      tmpHome,
+      session_id: sessionId,
+      stream_id: streamId,
+    });
+
     // Inject Provider environment variables for load balancing
     if (provider) {
-      this.logger.info(`Injecting provider env vars`, {
+      this.logger.info(`Injecting provider env vars for stream`, {
         provider_id: provider.id,
         provider_name: provider.name,
         has_apiKey: !!provider.apiKey,
@@ -309,7 +324,7 @@ class ClaudeStreamExecutor {
         }
       }
 
-      this.logger.info(`Provider env vars injected`, {
+      this.logger.info(`Provider env vars injected for stream`, {
         ANTHROPIC_AUTH_TOKEN_set: !!env.ANTHROPIC_AUTH_TOKEN,
         ANTHROPIC_API_KEY_set: !!env.ANTHROPIC_API_KEY,
         ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL,
@@ -447,6 +462,21 @@ class ClaudeStreamExecutor {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
 
+      // Cleanup temporary HOME directory
+      try {
+        fs.rmSync(tmpHome, { recursive: true, force: true });
+        this.logger.debug(`Cleaned up temporary HOME directory for stream`, {
+          tmpHome,
+          session_id: sessionId,
+        });
+      } catch (cleanupErr) {
+        this.logger.warn(`Failed to cleanup temporary HOME directory for stream`, {
+          tmpHome,
+          session_id: sessionId,
+          error: cleanupErr.message,
+        });
+      }
+
       // 完成流式任务（如果有 streamManager）
       if (streamId && this.streamManager) {
         this.streamManager.completeStream(streamId, {
@@ -501,6 +531,14 @@ class ClaudeStreamExecutor {
     // 进程错误处理
     child.on('error', (err) => {
       clearTimeout(timeout);
+
+      // Cleanup temporary HOME directory on error
+      try {
+        fs.rmSync(tmpHome, { recursive: true, force: true });
+      } catch (cleanupErr) {
+        // Ignore cleanup errors
+      }
+
       this.logger.error(`Failed to start Claude process`, {
         session_id: sessionId,
         error: err.message,
