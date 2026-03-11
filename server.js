@@ -207,6 +207,7 @@ async function main() {
     './src/services/taskQueue',
     './src/services/webhookNotifier',
     './src/services/auditLogger',
+    './src/services/providerRouter',
     './src/storage/sessionStore',
     './src/storage/taskStore',
     './src/storage/statsStore',
@@ -247,6 +248,10 @@ async function main() {
   const auditLogger = new AuditLogger(config, statsStore);
   const streamManager = new StreamManager(config);
 
+  // Initialize ProviderRouter
+  const ProviderRouter = require('./src/services/providerRouter');
+  const providerRouter = new ProviderRouter(config);
+
   // 加载路由
   const createHealthRoute = require('./src/routes/health');
   const createConfigRoute = require('./src/routes/config');
@@ -279,13 +284,16 @@ async function main() {
   app.get('/health', createHealthRoute());
   app.get('/api/config', createConfigRoute(configPath));
   // Synchronous messages and batch processing
-  app.use('/api/messages', createClaudeRoutes(claudeExecutor, config, null, sessionManager));
+  app.use('/api/messages', createClaudeRoutes(claudeExecutor, config, null, sessionManager, providerRouter));
   // Asynchronous message processing
-  app.use('/api/async/messages', createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager));
+  app.use('/api/async/messages', createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager, providerRouter));
   app.use('/api/sessions', createSessionRoutes(sessionManager, messageStore, streamManager));
   app.use('/api/projects', createProjectsRoutes(sessionStore, config, messageStore));
   app.use('/api/statistics', createStatisticsRoutes(statisticsCollector));
   app.use('/api/tasks', createTaskRoutes(taskQueue));
+  // Load balance management API
+  const createLoadBalanceRoutes = require('./src/routes/loadBalance');
+  app.use('/api/load-balance', createLoadBalanceRoutes(providerRouter));
 
   // Swagger API Documentation
   const swaggerUi = require('swagger-ui-express');
@@ -366,6 +374,13 @@ async function main() {
       if (newConfig.security?.swaggerDocs?.enabled !== config.security?.swaggerDocs?.enabled) {
         configChanges.push(`security.swaggerDocs.enabled: ${config.security?.swaggerDocs?.enabled} → ${newConfig.security?.swaggerDocs?.enabled}`);
         configChanges.push(`Swagger 文档访问: ${newConfig.security.swaggerDocs.enabled === false ? '已禁用' : '已启用'} (实时生效)`);
+      }
+      if (JSON.stringify(newConfig.providers) !== JSON.stringify(config.providers) ||
+          JSON.stringify(newConfig.loadBalance) !== JSON.stringify(config.loadBalance)) {
+        configChanges.push('providers/loadBalance configuration changed');
+        // Re-initialize providerRouter
+        const NewProviderRouter = require('./src/services/providerRouter');
+        Object.assign(providerRouter, new NewProviderRouter(newConfig));
       }
 
       // 更新配置对象（保留引用）
