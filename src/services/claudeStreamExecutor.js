@@ -289,8 +289,13 @@ class ClaudeStreamExecutor {
     const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-stream-'));
     env.HOME = tmpHome;
 
+    // Unset CLAUDECODE to allow running Claude CLI from within Claude Code
+    // Without this, Claude CLI detects nested session and refuses to run
+    delete env.CLAUDECODE;
+
     this.logger.info(`Created temporary HOME directory for stream`, {
       tmpHome,
+      CLAUDECODE_unset: true,
       session_id: sessionId,
       stream_id: streamId,
     });

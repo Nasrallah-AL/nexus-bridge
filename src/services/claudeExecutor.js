@@ -293,9 +293,14 @@ class ClaudeExecutor {
       const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-exec-'));
       env.HOME = tmpHome;
 
+      // Unset CLAUDECODE to allow running Claude CLI from within Claude Code
+      // Without this, Claude CLI detects nested session and refuses to run
+      delete env.CLAUDECODE;
+
       this.logger.info(`Created temporary HOME directory`, {
         tmpHome,
-        reason: 'Isolate from local ~/.claude/settings.json',
+        CLAUDECODE_unset: true,
+        reason: 'Isolate from local ~/.claude/settings.json and allow nested execution',
       });
 
       // Inject Provider environment variables for load balancing
