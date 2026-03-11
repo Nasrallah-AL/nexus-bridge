@@ -291,6 +291,14 @@ class ClaudeExecutor {
         if (provider.baseUrl) {
           env.ANTHROPIC_BASE_URL = provider.baseUrl;
         }
+        // Inject additional custom environment variables from provider.env
+        if (provider.env && typeof provider.env === 'object') {
+          for (const [key, value] of Object.entries(provider.env)) {
+            if (value !== undefined && value !== null) {
+              env[key] = String(value);
+            }
+          }
+        }
       }
 
       // 确保项目目录存在

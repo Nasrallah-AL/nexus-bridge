@@ -262,10 +262,21 @@ Add `providers` and `loadBalance` sections to your `~/.claude-code-server/config
       "enabled": true
     },
     {
-      "id": "backup",
-      "name": "Backup API Key",
-      "apiKey": "sk-ant-api03-yyy",
-      "baseUrl": "https://api.anthropic.com",
+      "id": "zhipu",
+      "name": "ZhipuAI GLM",
+      "apiKey": "your-zhipu-api-key",
+      "baseUrl": "https://open.bigmodel.cn/api/anthropic",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5",
+        "ANTHROPIC_MODEL": "glm-5",
+        "ANTHROPIC_REASONING_MODEL": "glm-5",
+        "API_TIMEOUT_MS": "3000000",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+      },
       "weight": 1,
       "enabled": true
     }
@@ -285,14 +296,31 @@ Add `providers` and `loadBalance` sections to your `~/.claude-code-server/config
 |-------|------|---------|-------------|
 | `providers[].id` | string | required | Unique provider identifier |
 | `providers[].name` | string | required | Display name |
-| `providers[].apiKey` | string | required | Anthropic API key |
-| `providers[].baseUrl` | string | optional | API endpoint URL (default: https://api.anthropic.com) |
+| `providers[].apiKey` | string | required | Anthropic API key (injected as `ANTHROPIC_API_KEY`) |
+| `providers[].baseUrl` | string | optional | API endpoint URL (injected as `ANTHROPIC_BASE_URL`) |
+| `providers[].env` | object | optional | Additional environment variables to inject |
 | `providers[].weight` | number | 1 | Weight for weighted strategy (1-10) |
 | `providers[].enabled` | boolean | true | Whether provider is active |
 | `loadBalance.strategy` | string | "round-robin" | Strategy: "round-robin" or "weighted" |
 | `loadBalance.failover` | boolean | false | Auto-switch on provider failure |
 | `loadBalance.failureThreshold` | number | 3 | Consecutive failures to mark unhealthy |
 | `loadBalance.recoveryTimeout` | number | 60 | Seconds before retrying unhealthy provider |
+
+### Environment Variables
+
+The `providers[].env` object allows you to inject additional environment variables when spawning Claude CLI for that provider. Common use cases:
+
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_AUTH_TOKEN` | Alternative authentication token |
+| `ANTHROPIC_MODEL` | Default model override |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Default Sonnet model |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Default Haiku model |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Default Opus model |
+| `ANTHROPIC_REASONING_MODEL` | Reasoning model override |
+| `API_TIMEOUT_MS` | API timeout in milliseconds |
+| `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | Disable non-essential network traffic |
+| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | Enable experimental agent teams |
 
 ### Features
 
