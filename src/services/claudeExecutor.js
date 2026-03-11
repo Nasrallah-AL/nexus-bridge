@@ -18,6 +18,7 @@ class ClaudeExecutor {
    */
   async execute(options) {
     const {
+      provider = null,
       prompt,
       projectPath,
       model = this.config.defaultModel,
@@ -122,6 +123,7 @@ class ClaudeExecutor {
       try {
         result = await this.spawnCommand(projectPath, args, {
           onSpawn: options.onSpawn,
+          provider,
         });
       } catch (spawnErr) {
         // 如果是 "Session ID already in use" 错误，尝试使用 --resume 重试
@@ -139,7 +141,7 @@ class ClaudeExecutor {
             args: retryArgs.join(' ').substring(0, 200) + '...',
           });
 
-          result = await this.spawnCommand(projectPath, retryArgs);
+          result = await this.spawnCommand(projectPath, retryArgs, { provider });
           this.logger.info(`Successfully resumed session`, { session_id: sessionId });
         } else {
           // 其他错误，直接抛出
@@ -270,7 +272,7 @@ class ClaudeExecutor {
    * 使用 spawn 执行命令
    */
   spawnCommand(projectPath, args, options = {}) {
-    const { onSpawn } = options;
+    const { onSpawn, provider } = options;
 
     return new Promise((resolve, reject) => {
       const env = { ...process.env };
@@ -279,6 +281,16 @@ class ClaudeExecutor {
       // 这样可以确保使用正确的 Node.js 版本（适用于 NVM、nvm-windows 等场景）
       if (this.config.nodeBinDir) {
         env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
+      }
+
+      // Inject Provider environment variables for load balancing
+      if (provider) {
+        if (provider.apiKey) {
+          env.ANTHROPIC_API_KEY = provider.apiKey;
+        }
+        if (provider.baseUrl) {
+          env.ANTHROPIC_BASE_URL = provider.baseUrl;
+        }
       }
 
       // 确保项目目录存在
