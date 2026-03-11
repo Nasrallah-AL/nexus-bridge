@@ -2013,7 +2013,7 @@ async function resetProviderHealth() {
   }
 
   if (providers.length === 0) {
-    console.log(chalk.yellow('没有可用的 Provider（请先在 config.json 中配置 providers）'));
+    console.log(chalk.yellow('没有可用的 Provider（请先在 ~/.claude-code-server/config.json 中配置 providers）'));
     return;
   }
 
@@ -2072,7 +2072,7 @@ async function toggleProvider() {
   }
 
   if (providers.length === 0) {
-    console.log(chalk.yellow('没有可用的 Provider（请先在 config.json 中配置 providers）'));
+    console.log(chalk.yellow('没有可用的 Provider（请先在 ~/.claude-code-server/config.json 中配置 providers）'));
     return;
   }
 
@@ -2125,6 +2125,345 @@ async function toggleProvider() {
   }
 }
 
+// ========== 负载均衡配置 ==========
+
+// 读取配置文件
+function readConfigFile() {
+  const configPath = path.join(os.homedir(), '.claude-code-server', 'config.json');
+  try {
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, 'utf8');
+      return JSON.parse(content);
+    }
+  } catch (error) {
+    console.log(chalk.red('读取配置文件失败: ' + error.message));
+  }
+  return {};
+}
+
+// 写入配置文件
+function writeConfigFile(configData) {
+  const configPath = path.join(os.homedir(), '.claude-code-server', 'config.json');
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(configData, null, 2), 'utf8');
+    return true;
+  } catch (error) {
+    console.log(chalk.red('写入配置文件失败: ' + error.message));
+    return false;
+  }
+}
+
+// 添加 Provider
+async function addProvider() {
+  console.log('');
+  console.log(chalk.bold.cyan('添加新 Provider'));
+  console.log('');
+
+  const answers = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'id',
+      message: 'Provider ID (唯一标识，如 provider-1):',
+      validate: (input) => {
+        if (!input || !input.trim()) return '请输入 Provider ID';
+        if (!/^[a-zA-Z0-9_-]+$/.test(input)) return 'ID 只能包含字母、数字、下划线和连字符';
+        return true;
+      },
+    },
+    {
+      type: 'input',
+      name: 'name',
+      message: 'Provider 名称 (显示名称):',
+      default: (answers) => answers.id,
+    },
+    {
+      type: 'input',
+      name: 'apiKey',
+      message: 'API Key:',
+      validate: (input) => input && input.trim() ? true : '请输入 API Key',
+    },
+    {
+      type: 'input',
+      name: 'baseUrl',
+      message: 'Base URL (默认: https://api.anthropic.com):',
+      default: 'https://api.anthropic.com',
+    },
+    {
+      type: 'number',
+      name: 'weight',
+      message: '权重 (用于加权策略，默认 1):',
+      default: 1,
+      min: 1,
+      max: 100,
+    },
+    {
+      type: 'confirm',
+      name: 'enabled',
+      message: '是否启用?',
+      default: true,
+    },
+    {
+      type: 'confirm',
+      name: 'addEnv',
+      message: '是否添加自定义环境变量?',
+      default: false,
+    },
+  ]);
+
+  // 如果需要添加环境变量
+  let env = {};
+  if (answers.addEnv) {
+    let addMore = true;
+    while (addMore) {
+      const envAnswer = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'key',
+          message: '环境变量名 (如 CUSTOM_API_HEADER):',
+          validate: (input) => input && input.trim() ? true : '请输入环境变量名',
+        },
+        {
+          type: 'input',
+          name: 'value',
+          message: '环境变量值:',
+          validate: (input) => input !== undefined && input !== null ? true : '请输入环境变量值',
+        },
+        {
+          type: 'confirm',
+          name: 'addMore',
+          message: '继续添加更多环境变量?',
+          default: false,
+        },
+      ]);
+      env[envAnswer.key] = envAnswer.value;
+      addMore = envAnswer.addMore;
+    }
+  }
+
+  // 读取当前配置
+  const configData = readConfigFile();
+  if (!configData.providers) {
+    configData.providers = [];
+  }
+
+  // 检查 ID 是否已存在
+  if (configData.providers.some(p => p.id === answers.id)) {
+    console.log(chalk.red(`Provider ID "${answers.id}" 已存在`));
+    return;
+  }
+
+  // 添加新 Provider
+  const newProvider = {
+    id: answers.id,
+    name: answers.name,
+    apiKey: answers.apiKey,
+    baseUrl: answers.baseUrl,
+    weight: answers.weight,
+    enabled: answers.enabled,
+  };
+
+  if (Object.keys(env).length > 0) {
+    newProvider.env = env;
+  }
+
+  configData.providers.push(newProvider);
+
+  // 如果是第一个 provider，自动设置 loadBalance
+  if (!configData.loadBalance) {
+    configData.loadBalance = {
+      strategy: 'round-robin',
+      failureThreshold: 3,
+      failover: true,
+    };
+  }
+
+  if (writeConfigFile(configData)) {
+    console.log(chalk.green(`✓ Provider "${answers.name}" 已添加`));
+    console.log(chalk.gray('配置已保存，服务器将自动重新加载'));
+  }
+}
+
+// 编辑 Provider
+async function editProvider() {
+  const configData = readConfigFile();
+  const providers = configData.providers || [];
+
+  if (providers.length === 0) {
+    console.log(chalk.yellow('没有可编辑的 Provider'));
+    return;
+  }
+
+  const { providerId } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'providerId',
+      message: '选择要编辑的 Provider',
+      choices: providers.map(p => ({
+        name: `${p.name || p.id} (${p.enabled ? chalk.green('已启用') : chalk.gray('已禁用')})`,
+        value: p.id,
+      })),
+    },
+  ]);
+
+  const provider = providers.find(p => p.id === providerId);
+  if (!provider) {
+    console.log(chalk.red('Provider 未找到'));
+    return;
+  }
+
+  console.log('');
+  console.log(chalk.bold.cyan(`编辑 Provider: ${provider.name || provider.id}`));
+  console.log(chalk.gray('（直接回车保持当前值）'));
+  console.log('');
+
+  const answers = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'name',
+      message: 'Provider 名称:',
+      default: provider.name,
+    },
+    {
+      type: 'input',
+      name: 'apiKey',
+      message: 'API Key (留空保持不变):',
+    },
+    {
+      type: 'input',
+      name: 'baseUrl',
+      message: 'Base URL:',
+      default: provider.baseUrl,
+    },
+    {
+      type: 'number',
+      name: 'weight',
+      message: '权重:',
+      default: provider.weight || 1,
+      min: 1,
+      max: 100,
+    },
+    {
+      type: 'confirm',
+      name: 'enabled',
+      message: '是否启用?',
+      default: provider.enabled !== false,
+    },
+  ]);
+
+  // 更新 Provider
+  provider.name = answers.name;
+  if (answers.apiKey && answers.apiKey.trim()) {
+    provider.apiKey = answers.apiKey;
+  }
+  provider.baseUrl = answers.baseUrl;
+  provider.weight = answers.weight;
+  provider.enabled = answers.enabled;
+
+  if (writeConfigFile(configData)) {
+    console.log(chalk.green(`✓ Provider "${provider.name}" 已更新`));
+    console.log(chalk.gray('配置已保存，服务器将自动重新加载'));
+  }
+}
+
+// 删除 Provider
+async function removeProvider() {
+  const configData = readConfigFile();
+  const providers = configData.providers || [];
+
+  if (providers.length === 0) {
+    console.log(chalk.yellow('没有可删除的 Provider'));
+    return;
+  }
+
+  const { providerId } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'providerId',
+      message: '选择要删除的 Provider',
+      choices: providers.map(p => ({
+        name: `${p.name || p.id} (${p.enabled ? chalk.green('已启用') : chalk.gray('已禁用')})`,
+        value: p.id,
+      })),
+    },
+  ]);
+
+  const { confirm } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'confirm',
+      message: '确认删除此 Provider?',
+      default: false,
+    },
+  ]);
+
+  if (!confirm) {
+    console.log(chalk.gray('已取消'));
+    return;
+  }
+
+  const index = providers.findIndex(p => p.id === providerId);
+  if (index !== -1) {
+    const removed = providers.splice(index, 1)[0];
+    configData.providers = providers;
+
+    if (writeConfigFile(configData)) {
+      console.log(chalk.green(`✓ Provider "${removed.name || removed.id}" 已删除`));
+      console.log(chalk.gray('配置已保存，服务器将自动重新加载'));
+    }
+  }
+}
+
+// 配置负载均衡策略
+async function configureLoadBalance() {
+  const configData = readConfigFile();
+
+  console.log('');
+  console.log(chalk.bold.cyan('配置负载均衡策略'));
+  console.log('');
+
+  const currentStrategy = configData.loadBalance?.strategy || 'round-robin';
+  const currentFailover = configData.loadBalance?.failover !== false;
+  const currentThreshold = configData.loadBalance?.failureThreshold || 3;
+
+  const answers = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'strategy',
+      message: '选择负载均衡策略:',
+      choices: [
+        { name: '轮询 (Round Robin) - 依次分配', value: 'round-robin' },
+        { name: '加权 (Weighted) - 按权重分配', value: 'weighted' },
+      ],
+      default: currentStrategy,
+    },
+    {
+      type: 'confirm',
+      name: 'failover',
+      message: '启用故障转移 (当 Provider 不健康时自动切换)?',
+      default: currentFailover,
+    },
+    {
+      type: 'number',
+      name: 'failureThreshold',
+      message: '连续失败多少次后标记为不健康:',
+      default: currentThreshold,
+      min: 1,
+      max: 10,
+    },
+  ]);
+
+  configData.loadBalance = {
+    strategy: answers.strategy,
+    failover: answers.failover,
+    failureThreshold: answers.failureThreshold,
+  };
+
+  if (writeConfigFile(configData)) {
+    console.log(chalk.green('✓ 负载均衡配置已更新'));
+    console.log(chalk.gray('配置已保存，服务器将自动重新加载'));
+  }
+}
+
 // 负载均衡管理菜单
 async function loadBalanceMenu() {
   const { action } = await inquirer.prompt([
@@ -2132,12 +2471,19 @@ async function loadBalanceMenu() {
       type: 'list',
       name: 'action',
       message: '负载均衡管理',
-      pageSize: 10,
+      pageSize: 12,
       choices: [
         { name: '📊 查看负载均衡状态', value: 'status' },
         { name: '🔗 查看会话绑定', value: 'bindings' },
+        new inquirer.Separator(),
+        { name: '➕ 添加 Provider', value: 'add' },
+        { name: '✏️  编辑 Provider', value: 'edit' },
+        { name: '🗑️  删除 Provider', value: 'remove' },
+        new inquirer.Separator(),
+        { name: '⚙️  配置负载均衡策略', value: 'config' },
         { name: '🔄 重置 Provider 健康状态', value: 'reset' },
         { name: '⚡ 启用/禁用 Provider', value: 'toggle' },
+        new inquirer.Separator(),
         { name: '◀ 返回主菜单', value: 'back' },
       ],
     },
@@ -2149,6 +2495,18 @@ async function loadBalanceMenu() {
       break;
     case 'bindings':
       await viewSessionBindings();
+      break;
+    case 'add':
+      await addProvider();
+      break;
+    case 'edit':
+      await editProvider();
+      break;
+    case 'remove':
+      await removeProvider();
+      break;
+    case 'config':
+      await configureLoadBalance();
       break;
     case 'reset':
       await resetProviderHealth();
