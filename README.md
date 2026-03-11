@@ -32,6 +32,7 @@ Claude Code Server is a full-featured HTTP API service that wraps the Anthropic 
 - 🖥️ **TUI Management Tool** - Visual server management and monitoring
 - 🛑 **Task Cancellation** - Cancel running tasks in real-time
 - 💾 **Message Storage** - Store and retrieve conversation messages
+- ⚖️ **Load Balancing** - Multi-provider support with session affinity, round-robin/weighted strategies, and automatic failover
 
 ## 🚀 Quick Start
 
@@ -240,6 +241,123 @@ eventSource.addEventListener('error', (e) => {
 | `max_budget_usd` | number | Maximum budget for this request |
 | `allowed_tools` | string[] | Whitelist of allowed tools |
 | `disallowed_tools` | string[] | Blacklist of disallowed tools |
+
+## ⚖️ Load Balancing
+
+Claude Code Server supports multi-provider load balancing with session affinity, allowing you to distribute requests across multiple Anthropic API keys or third-party compatible endpoints.
+
+### Configuration
+
+Add `providers` and `loadBalance` sections to your `~/.claude-code-server/config.json`:
+
+```json
+{
+  "providers": [
+    {
+      "id": "main",
+      "name": "Main API Key",
+      "apiKey": "sk-ant-api03-xxx",
+      "baseUrl": "https://api.anthropic.com",
+      "weight": 3,
+      "enabled": true
+    },
+    {
+      "id": "backup",
+      "name": "Backup API Key",
+      "apiKey": "sk-ant-api03-yyy",
+      "baseUrl": "https://api.anthropic.com",
+      "weight": 1,
+      "enabled": true
+    }
+  ],
+  "loadBalance": {
+    "strategy": "weighted",
+    "failover": true,
+    "failureThreshold": 3,
+    "recoveryTimeout": 60
+  }
+}
+```
+
+### Configuration Options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `providers[].id` | string | required | Unique provider identifier |
+| `providers[].name` | string | required | Display name |
+| `providers[].apiKey` | string | required | Anthropic API key |
+| `providers[].baseUrl` | string | optional | API endpoint URL (default: https://api.anthropic.com) |
+| `providers[].weight` | number | 1 | Weight for weighted strategy (1-10) |
+| `providers[].enabled` | boolean | true | Whether provider is active |
+| `loadBalance.strategy` | string | "round-robin" | Strategy: "round-robin" or "weighted" |
+| `loadBalance.failover` | boolean | false | Auto-switch on provider failure |
+| `loadBalance.failureThreshold` | number | 3 | Consecutive failures to mark unhealthy |
+| `loadBalance.recoveryTimeout` | number | 60 | Seconds before retrying unhealthy provider |
+
+### Features
+
+**Session Affinity**: Same `session_id` always routes to the same provider, ensuring conversation continuity.
+
+**Strategies**:
+- **Round-Robin**: Distributes requests evenly across all enabled providers
+- **Weighted**: Distributes requests proportionally based on provider weights (e.g., weight 3:1 = 75%:25%)
+
+**Automatic Failover**: When enabled, automatically switches sessions to healthy providers when the bound provider becomes unhealthy.
+
+### Management API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/load-balance/status` | GET | View all providers health, request counts, and binding stats |
+| `/api/load-balance/bindings` | GET | View current session-provider bindings |
+| `/api/load-balance/providers/:id/reset` | POST | Reset provider health status |
+| `/api/load-balance/providers/:id/enable` | POST | Enable a provider |
+| `/api/load-balance/providers/:id/disable` | POST | Disable a provider |
+
+**Example - Check Status:**
+```bash
+curl http://localhost:5546/api/load-balance/status
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "strategy": "weighted",
+  "failover": true,
+  "providers": [
+    {
+      "id": "main",
+      "name": "Main API Key",
+      "weight": 3,
+      "enabled": true,
+      "healthy": true,
+      "consecutiveFailures": 0,
+      "totalRequests": 42,
+      "boundSessions": 5
+    },
+    {
+      "id": "backup",
+      "name": "Backup API Key",
+      "weight": 1,
+      "enabled": true,
+      "healthy": false,
+      "consecutiveFailures": 3,
+      "totalRequests": 8,
+      "boundSessions": 1
+    }
+  ]
+}
+```
+
+**Example - Reset Unhealthy Provider:**
+```bash
+curl -X POST http://localhost:5546/api/load-balance/providers/backup/reset
+```
+
+### Backward Compatibility
+
+When no `providers` configuration exists, the system works exactly as before using the default Claude CLI configuration.
 
 ## 🖥️ TUI Management Tool
 
