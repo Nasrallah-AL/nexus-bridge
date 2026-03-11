@@ -1198,10 +1198,26 @@ async function listSessions() {
   const spinner = ora('获取会话列表...').start();
 
   try {
-    const response = await authenticatedFetch(`http://localhost:${config.port}/api/sessions`, {}, config);
-    const data = await response.json();
+    // 并行获取会话列表和负载均衡绑定信息
+    const [sessionsResponse, bindingsResponse, lbStatusResponse] = await Promise.all([
+      authenticatedFetch(`http://localhost:${config.port}/api/sessions`, {}, config),
+      authenticatedFetch(`http://localhost:${config.port}/api/load-balance/bindings`, {}, config).catch(() => ({ json: () => ({ success: false, bindings: {} }) })),
+      authenticatedFetch(`http://localhost:${config.port}/api/load-balance/status`, {}, config).catch(() => ({ json: () => ({ success: false, providers: [] }) })),
+    ]);
+
+    const data = await sessionsResponse.json();
+    const bindingsData = await bindingsResponse.json();
+    const lbStatusData = await lbStatusResponse.json();
 
     spinner.stop();
+
+    // 构建 providerId -> providerName 映射
+    const providerNames = {};
+    if (lbStatusData.success && lbStatusData.providers) {
+      lbStatusData.providers.forEach(p => {
+        providerNames[p.id] = p.name;
+      });
+    }
 
     if (data.success && data.sessions.length > 0) {
       console.log('');
@@ -1210,9 +1226,15 @@ async function listSessions() {
 
       data.sessions.forEach((session, index) => {
         const statusColor = session.status === 'active' ? chalk.green : chalk.gray;
+        const providerId = bindingsData.bindings?.[session.id];
+        const providerName = providerId ? (providerNames[providerId] || providerId) : null;
+
         console.log(`${chalk.bold((index + 1) + '.')} ${chalk.white(session.id.substring(0, 8))}... - ${statusColor('● ' + session.status)}`);
         console.log(`   ${chalk.gray('项目:')} ${session.project_path}`);
         console.log(`   ${chalk.gray('模型:')} ${session.model}`);
+        if (providerName) {
+          console.log(`   ${chalk.gray('Provider:')} ${chalk.magenta(providerName)}`);
+        }
         console.log(`   ${chalk.gray('消息数:')} ${session.messages_count} | ${chalk.gray('花费:')} $${session.total_cost_usd.toFixed(4)}`);
         console.log(`   ${chalk.gray('创建:')} ${new Date(session.created_at).toLocaleString()}`);
         console.log('');
@@ -1299,13 +1321,34 @@ async function viewSessionDetails() {
     ]);
 
     const spinner2 = ora('获取会话详情...').start();
-    const detailResponse = await authenticatedFetch(`http://localhost:${config.port}/api/sessions/${sessionId}`, {}, config);
+
+    // 并行获取会话详情和负载均衡绑定信息
+    const [detailResponse, bindingsResponse, lbStatusResponse] = await Promise.all([
+      authenticatedFetch(`http://localhost:${config.port}/api/sessions/${sessionId}`, {}, config),
+      authenticatedFetch(`http://localhost:${config.port}/api/load-balance/bindings`, {}, config).catch(() => ({ json: () => ({ success: false, bindings: {} }) })),
+      authenticatedFetch(`http://localhost:${config.port}/api/load-balance/status`, {}, config).catch(() => ({ json: () => ({ success: false, providers: [] }) })),
+    ]);
+
     const detailData = await detailResponse.json();
+    const bindingsData = await bindingsResponse.json();
+    const lbStatusData = await lbStatusResponse.json();
 
     spinner2.stop();
 
     if (detailData.success) {
       const session = detailData.session;
+
+      // 构建 providerId -> providerName 映射
+      const providerNames = {};
+      if (lbStatusData.success && lbStatusData.providers) {
+        lbStatusData.providers.forEach(p => {
+          providerNames[p.id] = p.name;
+        });
+      }
+
+      const providerId = bindingsData.bindings?.[session.id];
+      const providerName = providerId ? (providerNames[providerId] || providerId) : null;
+
       console.log('');
       console.log(chalk.bold.cyan('会话详情：'));
       console.log('');
@@ -1313,6 +1356,9 @@ async function viewSessionDetails() {
       console.log(`${chalk.white('状态:')}          ${session.status}`);
       console.log(`${chalk.white('项目路径:')}      ${session.project_path}`);
       console.log(`${chalk.white('模型:')}          ${session.model}`);
+      if (providerName) {
+        console.log(`${chalk.white('Provider:')}      ${chalk.magenta(providerName)}`);
+      }
       console.log(`${chalk.white('消息数:')}        ${session.messages_count}`);
       console.log(`${chalk.white('总花费:')}        $${session.total_cost_usd.toFixed(4)}`);
       console.log(`${chalk.white('创建时间:')}      ${new Date(session.created_at).toLocaleString()}`);
@@ -1840,6 +1886,273 @@ async function tasksMenu() {
   await tasksMenu();
 }
 
+// ========== 负载均衡管理 ==========
+
+// 查看负载均衡状态
+async function viewLoadBalanceStatus() {
+  const { running } = isServerRunning();
+
+  if (!running) {
+    console.log(chalk.red('✗ 服务未运行，请先启动服务'));
+    return;
+  }
+
+  const spinner = ora('获取负载均衡状态...').start();
+
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/status`, {}, config);
+    const data = await response.json();
+
+    spinner.stop();
+
+    if (data.success) {
+      const status = data.status;
+      console.log('');
+      console.log(chalk.bold.cyan('负载均衡状态：'));
+      console.log('');
+      console.log(`${chalk.white('策略:')} ${status.strategy === 'round-robin' ? '轮询 (Round Robin)' : '权重 (Weighted)'}`);
+      console.log(`${chalk.white('故障转移:')} ${status.failover ? '启用' : '禁用'}`);
+      console.log('');
+
+      if (status.providers && status.providers.length > 0) {
+        console.log(chalk.bold.white('Provider 列表：'));
+        console.log('');
+        status.providers.forEach((provider, index) => {
+          const healthIcon = provider.healthy ? chalk.green('✓') : chalk.red('✗');
+          const healthText = provider.healthy ? chalk.green('健康') : chalk.red('不健康');
+          console.log(`${chalk.bold((index + 1) + '.')} ${chalk.white(provider.name || provider.id)}`);
+          console.log(`   ${healthIcon} 状态: ${healthText} | ${chalk.gray('权重:')} ${provider.weight} | ${chalk.gray('绑定会话:')} ${provider.boundSessions}`);
+          console.log(`   ${chalk.gray('请求总数:')} ${provider.totalRequests} | ${chalk.gray('连续失败:')} ${provider.consecutiveFailures}`);
+          console.log('');
+        });
+      } else {
+        console.log(chalk.gray('没有配置 Provider'));
+      }
+    } else {
+      console.log(chalk.red('获取负载均衡状态失败'));
+    }
+  } catch (error) {
+    spinner.fail('获取负载均衡状态失败: ' + error.message);
+  }
+}
+
+// 查看会话绑定
+async function viewSessionBindings() {
+  const { running } = isServerRunning();
+
+  if (!running) {
+    console.log(chalk.red('✗ 服务未运行，请先启动服务'));
+    return;
+  }
+
+  const spinner = ora('获取会话绑定...').start();
+
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/bindings`, {}, config);
+    const data = await response.json();
+
+    spinner.stop();
+
+    if (data.success) {
+      const bindings = data.bindings;
+      const entries = Object.entries(bindings);
+
+      console.log('');
+      console.log(chalk.bold.cyan('会话绑定：'));
+      console.log('');
+
+      if (entries.length > 0) {
+        entries.forEach(([sessionId, providerId], index) => {
+          console.log(`${chalk.bold((index + 1) + '.')} ${chalk.white('Session:')} ${sessionId.substring(0, 8)}... → ${chalk.white('Provider:')} ${providerId}`);
+        });
+        console.log('');
+        console.log(chalk.gray(`总计: ${entries.length} 个会话绑定`));
+      } else {
+        console.log(chalk.gray('没有会话绑定'));
+      }
+      console.log('');
+    } else {
+      console.log(chalk.red('获取会话绑定失败'));
+    }
+  } catch (error) {
+    spinner.fail('获取会话绑定失败: ' + error.message);
+  }
+}
+
+// 重置 Provider 健康状态
+async function resetProviderHealth() {
+  const { running } = isServerRunning();
+
+  if (!running) {
+    console.log(chalk.red('✗ 服务未运行，请先启动服务'));
+    return;
+  }
+
+  // 先获取 provider 列表
+  let providers = [];
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/status`, {}, config);
+    const data = await response.json();
+    if (data.success && data.status.providers) {
+      providers = data.status.providers;
+    }
+  } catch (error) {
+    console.log(chalk.red('获取 Provider 列表失败: ' + error.message));
+    return;
+  }
+
+  if (providers.length === 0) {
+    console.log(chalk.yellow('没有可用的 Provider'));
+    return;
+  }
+
+  const { providerId } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'providerId',
+      message: '选择要重置的 Provider',
+      choices: providers.map(p => ({
+        name: `${p.name || p.id} ${p.healthy ? chalk.green('(健康)') : chalk.red('(不健康)')}`,
+        value: p.id,
+      })),
+    },
+  ]);
+
+  const spinner = ora('重置 Provider 健康状态...').start();
+
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/providers/${providerId}/reset`, {
+      method: 'POST',
+    }, config);
+    const data = await response.json();
+
+    spinner.stop();
+
+    if (data.success) {
+      console.log(chalk.green(`✓ Provider ${providerId} 已重置为健康状态`));
+    } else {
+      console.log(chalk.red(`重置失败: ${data.error}`));
+    }
+  } catch (error) {
+    spinner.fail('重置失败: ' + error.message);
+  }
+}
+
+// 启用/禁用 Provider
+async function toggleProvider() {
+  const { running } = isServerRunning();
+
+  if (!running) {
+    console.log(chalk.red('✗ 服务未运行，请先启动服务'));
+    return;
+  }
+
+  // 先获取 provider 列表
+  let providers = [];
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/status`, {}, config);
+    const data = await response.json();
+    if (data.success && data.status.providers) {
+      providers = data.status.providers;
+    }
+  } catch (error) {
+    console.log(chalk.red('获取 Provider 列表失败: ' + error.message));
+    return;
+  }
+
+  if (providers.length === 0) {
+    console.log(chalk.yellow('没有可用的 Provider'));
+    return;
+  }
+
+  const { action } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'action',
+      message: '选择操作',
+      choices: [
+        { name: '✓ 启用 Provider', value: 'enable' },
+        { name: '✗ 禁用 Provider', value: 'disable' },
+        { name: '◀ 返回', value: 'back' },
+      ],
+    },
+  ]);
+
+  if (action === 'back') {
+    return;
+  }
+
+  const { providerId } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'providerId',
+      message: `选择要${action === 'enable' ? '启用' : '禁用'}的 Provider`,
+      choices: providers.map(p => ({
+        name: `${p.name || p.id} ${p.enabled ? chalk.green('(已启用)') : chalk.gray('(已禁用)')}`,
+        value: p.id,
+      })),
+    },
+  ]);
+
+  const spinner = ora(`${action === 'enable' ? '启用' : '禁用'} Provider...`).start();
+
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/providers/${providerId}/${action}`, {
+      method: 'POST',
+    }, config);
+    const data = await response.json();
+
+    spinner.stop();
+
+    if (data.success) {
+      console.log(chalk.green(`✓ Provider ${providerId} 已${action === 'enable' ? '启用' : '禁用'}`));
+    } else {
+      console.log(chalk.red(`操作失败: ${data.error}`));
+    }
+  } catch (error) {
+    spinner.fail('操作失败: ' + error.message);
+  }
+}
+
+// 负载均衡管理菜单
+async function loadBalanceMenu() {
+  const { action } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'action',
+      message: '负载均衡管理',
+      pageSize: 10,
+      choices: [
+        { name: '📊 查看负载均衡状态', value: 'status' },
+        { name: '🔗 查看会话绑定', value: 'bindings' },
+        { name: '🔄 重置 Provider 健康状态', value: 'reset' },
+        { name: '⚡ 启用/禁用 Provider', value: 'toggle' },
+        { name: '◀ 返回主菜单', value: 'back' },
+      ],
+    },
+  ]);
+
+  switch (action) {
+    case 'status':
+      await viewLoadBalanceStatus();
+      break;
+    case 'bindings':
+      await viewSessionBindings();
+      break;
+    case 'reset':
+      await resetProviderHealth();
+      break;
+    case 'toggle':
+      await toggleProvider();
+      break;
+    case 'back':
+      return;
+  }
+
+  console.log('');
+  await loadBalanceMenu();
+}
+
 // 主菜单
 async function mainMenu() {
   const { running, pid } = isServerRunning();
@@ -1857,6 +2170,7 @@ async function mainMenu() {
         { name: '■ 停止服务', value: 'stop', disabled: !running ? '未运行' : false },
         { name: '● 查看状态', value: 'status' },
         { name: '💬 会话管理', value: 'sessions', disabled: !running ? '服务未运行' : false },
+        { name: '⚖️ 负载均衡', value: 'loadbalance', disabled: !running ? '服务未运行' : false },
         { name: '📊 查看统计', value: 'statistics', disabled: !running ? '服务未运行' : false },
         { name: '📋 任务列表', value: 'tasks', disabled: !running ? '服务未运行' : false },
         { name: '🏠 历史项目', value: 'projects', disabled: !running ? '服务未运行' : false },
@@ -1881,6 +2195,9 @@ async function mainMenu() {
       break;
     case 'sessions':
       await sessionManagementMenu();
+      break;
+    case 'loadbalance':
+      await loadBalanceMenu();
       break;
     case 'statistics':
       await statisticsMenu();
