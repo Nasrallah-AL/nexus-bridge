@@ -268,7 +268,7 @@ Claude Code Server 支持多 Provider 负载均衡与会话绑定，可以将请
       "apiKey": "your-zhipu-api-key",
       "baseUrl": "https://open.bigmodel.cn/api/anthropic",
       "env": {
-        "ANTHROPIC_AUTH_TOKEN": "",
+        "ANTHROPIC_API_KEY": "",
         "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5",
         "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5",
         "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5",
@@ -313,7 +313,7 @@ Claude Code Server 支持多 Provider 负载均衡与会话绑定，可以将请
 
 | 变量 | 说明 |
 |------|------|
-| `ANTHROPIC_AUTH_TOKEN` | 备用认证令牌 |
+| `ANTHROPIC_API_KEY` | 备用认证令牌 |
 | `ANTHROPIC_MODEL` | 默认模型覆盖 |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | 默认 Sonnet 模型 |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | 默认 Haiku 模型 |

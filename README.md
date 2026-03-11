@@ -267,7 +267,7 @@ Add `providers` and `loadBalance` sections to your `~/.claude-code-server/config
       "apiKey": "your-zhipu-api-key",
       "baseUrl": "https://open.bigmodel.cn/api/anthropic",
       "env": {
-        "ANTHROPIC_AUTH_TOKEN": "",
+        "ANTHROPIC_API_KEY": "",
         "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5",
         "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5",
         "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5",
@@ -312,7 +312,7 @@ The `providers[].env` object allows you to inject additional environment variabl
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_AUTH_TOKEN` | Alternative authentication token |
+| `ANTHROPIC_API_KEY` | Alternative authentication token |
 | `ANTHROPIC_MODEL` | Default model override |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | Default Sonnet model |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Default Haiku model |

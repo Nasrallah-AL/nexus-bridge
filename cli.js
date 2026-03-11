@@ -2179,8 +2179,8 @@ async function addProvider() {
     {
       type: 'input',
       name: 'apiKey',
-      message: 'API Key:',
-      validate: (input) => input && input.trim() ? true : '请输入 API Key',
+      message: 'Auth Token (ANTHROPIC_AUTH_TOKEN):',
+      validate: (input) => input && input.trim() ? true : '请输入 Auth Token',
     },
     {
       type: 'input',
@@ -2326,7 +2326,7 @@ async function editProvider() {
     {
       type: 'input',
       name: 'apiKey',
-      message: 'API Key (留空保持不变):',
+      message: 'Auth Token (留空保持不变):',
     },
     {
       type: 'input',

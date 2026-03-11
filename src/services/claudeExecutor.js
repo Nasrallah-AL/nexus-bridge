@@ -286,6 +286,9 @@ class ClaudeExecutor {
       // Inject Provider environment variables for load balancing
       if (provider) {
         if (provider.apiKey) {
+          // Claude CLI uses ANTHROPIC_AUTH_TOKEN, not ANTHROPIC_API_KEY
+          // Set both for compatibility with different tools
+          env.ANTHROPIC_AUTH_TOKEN = provider.apiKey;
           env.ANTHROPIC_API_KEY = provider.apiKey;
         }
         if (provider.baseUrl) {
