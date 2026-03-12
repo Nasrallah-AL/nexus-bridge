@@ -128,6 +128,7 @@ class ClaudeExecutor {
         result = await this.spawnCommand(projectPath, args, {
           onSpawn: options.onSpawn,
           provider,
+          sessionId,
         });
       } catch (spawnErr) {
         // 如果是 "Session ID already in use" 错误，尝试使用 --resume 重试
@@ -145,7 +146,7 @@ class ClaudeExecutor {
             args: retryArgs.join(' ').substring(0, 200) + '...',
           });
 
-          result = await this.spawnCommand(projectPath, retryArgs, { provider });
+          result = await this.spawnCommand(projectPath, retryArgs, { provider, sessionId });
           this.logger.info(`Successfully resumed session`, { session_id: sessionId });
         } else {
           // 其他错误，直接抛出
