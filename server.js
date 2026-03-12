@@ -14,6 +14,7 @@ const configPath = path.join(configDir, 'config.json');
 const defaultConfig = {
   port: 5546,
   host: '0.0.0.0',
+  trustProxy: 1, // Trust first reverse proxy (number for security, not boolean)
   claudePath: path.join(process.env.HOME || os.homedir(), '.nvm', 'versions', 'node', 'v22.21.0', 'bin', 'claude'),
   nvmBin: path.join(process.env.HOME || os.homedir(), '.nvm', 'versions', 'node', 'v22.21.0', 'bin'),
   workspacePath: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'workspace'),
@@ -207,6 +208,7 @@ async function main() {
     './src/services/taskQueue',
     './src/services/webhookNotifier',
     './src/services/auditLogger',
+    './src/services/providerRouter',
     './src/storage/sessionStore',
     './src/storage/taskStore',
     './src/storage/statsStore',
@@ -243,7 +245,12 @@ async function main() {
   const rateLimiter = new RateLimiter(config);
   const statisticsCollector = new StatisticsCollector(config, statsStore);
   const webhookNotifier = new WebhookNotifier(config);
-  const taskQueue = new TaskQueue(config, taskStore, claudeExecutor, webhookNotifier);
+
+  // Initialize ProviderRouter before TaskQueue (TaskQueue needs providerRouter for health tracking)
+  const ProviderRouter = require('./src/services/providerRouter');
+  const providerRouter = new ProviderRouter(config);
+
+  const taskQueue = new TaskQueue(config, taskStore, claudeExecutor, webhookNotifier, providerRouter);
   const auditLogger = new AuditLogger(config, statsStore);
   const streamManager = new StreamManager(config);
 
@@ -262,6 +269,11 @@ async function main() {
   const PORT = process.env.PORT || config.port;
   const HOST = process.env.HOST || config.host;
 
+  // Trust proxy - required when behind reverse proxy (nginx, etc.)
+  // This allows express-rate-limit to correctly identify client IP from X-Forwarded-For
+  // Use number (e.g., 1 = trust first proxy) instead of boolean for security
+  app.set('trust proxy', config.trustProxy ?? 1);
+
   // 中间件
   app.use(express.json({ limit: '10mb' })); // Prevent DoS attacks with large payloads
 
@@ -279,13 +291,16 @@ async function main() {
   app.get('/health', createHealthRoute());
   app.get('/api/config', createConfigRoute(configPath));
   // Synchronous messages and batch processing
-  app.use('/api/messages', createClaudeRoutes(claudeExecutor, config, null, sessionManager));
+  app.use('/api/messages', createClaudeRoutes(claudeExecutor, config, null, sessionManager, providerRouter));
   // Asynchronous message processing
-  app.use('/api/async/messages', createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager));
-  app.use('/api/sessions', createSessionRoutes(sessionManager, messageStore, streamManager));
+  app.use('/api/async/messages', createAsyncClaudeRoutes(claudeExecutor, config, taskQueue, sessionManager, providerRouter));
+  app.use('/api/sessions', createSessionRoutes(sessionManager, messageStore, streamManager, providerRouter));
   app.use('/api/projects', createProjectsRoutes(sessionStore, config, messageStore));
   app.use('/api/statistics', createStatisticsRoutes(statisticsCollector));
   app.use('/api/tasks', createTaskRoutes(taskQueue));
+  // Load balance management API
+  const createLoadBalanceRoutes = require('./src/routes/loadBalance');
+  app.use('/api/load-balance', createLoadBalanceRoutes(providerRouter));
 
   // Swagger API Documentation
   const swaggerUi = require('swagger-ui-express');
@@ -366,6 +381,12 @@ async function main() {
       if (newConfig.security?.swaggerDocs?.enabled !== config.security?.swaggerDocs?.enabled) {
         configChanges.push(`security.swaggerDocs.enabled: ${config.security?.swaggerDocs?.enabled} → ${newConfig.security?.swaggerDocs?.enabled}`);
         configChanges.push(`Swagger 文档访问: ${newConfig.security.swaggerDocs.enabled === false ? '已禁用' : '已启用'} (实时生效)`);
+      }
+      if (JSON.stringify(newConfig.providers) !== JSON.stringify(config.providers) ||
+          JSON.stringify(newConfig.loadBalance) !== JSON.stringify(config.loadBalance)) {
+        configChanges.push('providers/loadBalance configuration changed');
+        // Use updateConfig method for proper hot reload
+        providerRouter.updateConfig(newConfig);
       }
 
       // 更新配置对象（保留引用）

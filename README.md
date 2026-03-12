@@ -32,6 +32,7 @@ Claude Code Server is a full-featured HTTP API service that wraps the Anthropic 
 - 🖥️ **TUI Management Tool** - Visual server management and monitoring
 - 🛑 **Task Cancellation** - Cancel running tasks in real-time
 - 💾 **Message Storage** - Store and retrieve conversation messages
+- ⚖️ **Load Balancing** - Multi-provider support with session affinity, round-robin/weighted strategies, and automatic failover
 
 ## 🚀 Quick Start
 
@@ -240,6 +241,151 @@ eventSource.addEventListener('error', (e) => {
 | `max_budget_usd` | number | Maximum budget for this request |
 | `allowed_tools` | string[] | Whitelist of allowed tools |
 | `disallowed_tools` | string[] | Blacklist of disallowed tools |
+
+## ⚖️ Load Balancing
+
+Claude Code Server supports multi-provider load balancing with session affinity, allowing you to distribute requests across multiple Anthropic API keys or third-party compatible endpoints.
+
+### Configuration
+
+Add `providers` and `loadBalance` sections to your `~/.claude-code-server/config.json`:
+
+```json
+{
+  "providers": [
+    {
+      "id": "main",
+      "name": "Main API Key",
+      "apiKey": "sk-ant-api03-xxx",
+      "baseUrl": "https://api.anthropic.com",
+      "weight": 3,
+      "enabled": true
+    },
+    {
+      "id": "zhipu",
+      "name": "ZhipuAI GLM",
+      "apiKey": "your-zhipu-api-key",
+      "baseUrl": "https://open.bigmodel.cn/api/anthropic",
+      "env": {
+        "ANTHROPIC_API_KEY": "",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5",
+        "ANTHROPIC_MODEL": "glm-5",
+        "ANTHROPIC_REASONING_MODEL": "glm-5",
+        "API_TIMEOUT_MS": "3000000",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+      },
+      "weight": 1,
+      "enabled": true
+    }
+  ],
+  "loadBalance": {
+    "strategy": "weighted",
+    "failover": true,
+    "failureThreshold": 3,
+    "recoveryTimeout": 60
+  }
+}
+```
+
+### Configuration Options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `providers[].id` | string | required | Unique provider identifier |
+| `providers[].name` | string | required | Display name |
+| `providers[].apiKey` | string | required | Auth Token (injected as `ANTHROPIC_AUTH_TOKEN` and `ANTHropic_api_key`) |
+| `providers[].baseUrl` | string | optional | API endpoint URL (injected as `ANTHROPIC_BASE_URL`) |
+| `providers[].env` | object | optional | Additional environment variables to inject |
+| `providers[].weight` | number | 1 | Weight for weighted strategy (1-10) |
+| `providers[].enabled` | boolean | true | Whether provider is active |
+| `loadBalance.strategy` | string | "round-robin" | Strategy: "round-robin" or "weighted" |
+| `loadBalance.failover` | boolean | false | Auto-switch on provider failure |
+| `loadBalance.failureThreshold` | number | 3 | Consecutive failures to mark unhealthy |
+| `loadBalance.recoveryTimeout` | number | 60 | Seconds before retrying unhealthy provider |
+
+### Environment Variables
+
+The `providers[].env` object allows you to inject additional environment variables when spawning Claude CLI for that provider. Common use cases:
+
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Alternative authentication token |
+| `ANTHROPIC_MODEL` | Default model override |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Default Sonnet model |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Default Haiku model |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Default Opus model |
+| `ANTHROPIC_REASONING_MODEL` | Reasoning model override |
+| `API_TIMEOUT_MS` | API timeout in milliseconds |
+| `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | Disable non-essential network traffic |
+| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | Enable experimental agent teams |
+
+### Features
+
+**Session Affinity**: Same `session_id` always routes to the same provider, ensuring conversation continuity.
+
+**Strategies**:
+- **Round-Robin**: Distributes requests evenly across all enabled providers
+- **Weighted**: Distributes requests proportionally based on provider weights (e.g., weight 3:1 = 75%:25%)
+
+**Automatic Failover**: When enabled, automatically switches sessions to healthy providers when the bound provider becomes unhealthy.
+
+### Management API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/load-balance/status` | GET | View all providers health, request counts, and binding stats |
+| `/api/load-balance/bindings` | GET | View current session-provider bindings |
+| `/api/load-balance/providers/:id/reset` | POST | Reset provider health status |
+| `/api/load-balance/providers/:id/enable` | POST | Enable a provider |
+| `/api/load-balance/providers/:id/disable` | POST | Disable a provider |
+
+**Example - Check Status:**
+```bash
+curl http://localhost:5546/api/load-balance/status
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "strategy": "weighted",
+  "failover": true,
+  "providers": [
+    {
+      "id": "main",
+      "name": "Main API Key",
+      "weight": 3,
+      "enabled": true,
+      "healthy": true,
+      "consecutiveFailures": 0,
+      "totalRequests": 42,
+      "boundSessions": 5
+    },
+    {
+      "id": "backup",
+      "name": "Backup API Key",
+      "weight": 1,
+      "enabled": true,
+      "healthy": false,
+      "consecutiveFailures": 3,
+      "totalRequests": 8,
+      "boundSessions": 1
+    }
+  ]
+}
+```
+
+**Example - Reset Unhealthy Provider:**
+```bash
+curl -X POST http://localhost:5546/api/load-balance/providers/backup/reset
+```
+
+### Backward Compatibility
+
+When no `providers` configuration exists, the system works exactly as before using the default Claude CLI configuration.
 
 ## 🖥️ TUI Management Tool
 

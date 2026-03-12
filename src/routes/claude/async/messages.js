@@ -39,7 +39,7 @@ const { ensureSession } = require('../common/session');
  *       '501':
  *         description: Async execution not available
  */
-function createAsyncMessagesRoute(claudeExecutor, config, taskQueue, sessionManager) {
+function createAsyncMessagesRoute(claudeExecutor, config, taskQueue, sessionManager, providerRouter) {
   router.post('/', async (req, res) => {
     // 使用公共验证逻辑
     const validated = validateAndParseRequest(req, res, config);
@@ -80,6 +80,9 @@ function createAsyncMessagesRoute(claudeExecutor, config, taskQueue, sessionMana
       }
     }
 
+    // Select provider for load balancing
+    const provider = providerRouter ? providerRouter.select(sessionId) : null;
+
     try {
       // 创建异步任务
       const task = await taskQueue.addTask({
@@ -97,6 +100,7 @@ function createAsyncMessagesRoute(claudeExecutor, config, taskQueue, sessionMana
           agent: validated.agent,
           mcp_config: validated.mcpConfig,
           permission_mode: validated.permissionMode,
+          provider,
         },
       });
 

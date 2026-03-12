@@ -836,6 +836,25 @@ async function visualConfigEditor() {
           ]
         }
       ]
+    },
+    {
+      name: '⚖️ 负载均衡',
+      categories: [
+        {
+          name: '负载均衡管理',
+          items: [
+            { key: 'loadbalance', label: '📊 负载均衡管理', type: 'loadbalance' },
+          ]
+        },
+        {
+          name: '策略配置',
+          items: [
+            { key: 'loadBalance.strategy', label: '均衡策略', type: 'string', options: ['round-robin', 'weighted'] },
+            { key: 'loadBalance.failover', label: '启用故障转移', type: 'boolean' },
+            { key: 'loadBalance.failureThreshold', label: '故障阈值', type: 'number' },
+          ]
+        }
+      ]
     }
   ];
 
@@ -970,6 +989,11 @@ async function visualConfigEditor() {
             default: true,
           },
         ]);
+      } else if (item.type === 'loadbalance') {
+        // 特殊处理：负载均衡管理
+        await loadBalanceMenu();
+        // 重新加载配置（可能已被修改）
+        config = loadConfig();
       } else if (item.type === 'boolean') {
         const { newValue } = await inquirer.prompt([
           {
@@ -1198,10 +1222,26 @@ async function listSessions() {
   const spinner = ora('获取会话列表...').start();
 
   try {
-    const response = await authenticatedFetch(`http://localhost:${config.port}/api/sessions`, {}, config);
-    const data = await response.json();
+    // 并行获取会话列表和负载均衡绑定信息
+    const [sessionsResponse, bindingsResponse, lbStatusResponse] = await Promise.all([
+      authenticatedFetch(`http://localhost:${config.port}/api/sessions`, {}, config),
+      authenticatedFetch(`http://localhost:${config.port}/api/load-balance/bindings`, {}, config).catch(() => ({ json: () => ({ success: false, bindings: {} }) })),
+      authenticatedFetch(`http://localhost:${config.port}/api/load-balance/status`, {}, config).catch(() => ({ json: () => ({ success: false, providers: [] }) })),
+    ]);
+
+    const data = await sessionsResponse.json();
+    const bindingsData = await bindingsResponse.json();
+    const lbStatusData = await lbStatusResponse.json();
 
     spinner.stop();
+
+    // 构建 providerId -> providerName 映射
+    const providerNames = {};
+    if (lbStatusData.success && lbStatusData.providers) {
+      lbStatusData.providers.forEach(p => {
+        providerNames[p.id] = p.name;
+      });
+    }
 
     if (data.success && data.sessions.length > 0) {
       console.log('');
@@ -1210,9 +1250,15 @@ async function listSessions() {
 
       data.sessions.forEach((session, index) => {
         const statusColor = session.status === 'active' ? chalk.green : chalk.gray;
+        const providerId = bindingsData.bindings?.[session.id];
+        const providerName = providerId ? (providerNames[providerId] || providerId) : null;
+
         console.log(`${chalk.bold((index + 1) + '.')} ${chalk.white(session.id.substring(0, 8))}... - ${statusColor('● ' + session.status)}`);
         console.log(`   ${chalk.gray('项目:')} ${session.project_path}`);
         console.log(`   ${chalk.gray('模型:')} ${session.model}`);
+        if (providerName) {
+          console.log(`   ${chalk.gray('Provider:')} ${chalk.magenta(providerName)}`);
+        }
         console.log(`   ${chalk.gray('消息数:')} ${session.messages_count} | ${chalk.gray('花费:')} $${session.total_cost_usd.toFixed(4)}`);
         console.log(`   ${chalk.gray('创建:')} ${new Date(session.created_at).toLocaleString()}`);
         console.log('');
@@ -1299,13 +1345,34 @@ async function viewSessionDetails() {
     ]);
 
     const spinner2 = ora('获取会话详情...').start();
-    const detailResponse = await authenticatedFetch(`http://localhost:${config.port}/api/sessions/${sessionId}`, {}, config);
+
+    // 并行获取会话详情和负载均衡绑定信息
+    const [detailResponse, bindingsResponse, lbStatusResponse] = await Promise.all([
+      authenticatedFetch(`http://localhost:${config.port}/api/sessions/${sessionId}`, {}, config),
+      authenticatedFetch(`http://localhost:${config.port}/api/load-balance/bindings`, {}, config).catch(() => ({ json: () => ({ success: false, bindings: {} }) })),
+      authenticatedFetch(`http://localhost:${config.port}/api/load-balance/status`, {}, config).catch(() => ({ json: () => ({ success: false, providers: [] }) })),
+    ]);
+
     const detailData = await detailResponse.json();
+    const bindingsData = await bindingsResponse.json();
+    const lbStatusData = await lbStatusResponse.json();
 
     spinner2.stop();
 
     if (detailData.success) {
       const session = detailData.session;
+
+      // 构建 providerId -> providerName 映射
+      const providerNames = {};
+      if (lbStatusData.success && lbStatusData.providers) {
+        lbStatusData.providers.forEach(p => {
+          providerNames[p.id] = p.name;
+        });
+      }
+
+      const providerId = bindingsData.bindings?.[session.id];
+      const providerName = providerId ? (providerNames[providerId] || providerId) : null;
+
       console.log('');
       console.log(chalk.bold.cyan('会话详情：'));
       console.log('');
@@ -1313,6 +1380,9 @@ async function viewSessionDetails() {
       console.log(`${chalk.white('状态:')}          ${session.status}`);
       console.log(`${chalk.white('项目路径:')}      ${session.project_path}`);
       console.log(`${chalk.white('模型:')}          ${session.model}`);
+      if (providerName) {
+        console.log(`${chalk.white('Provider:')}      ${chalk.magenta(providerName)}`);
+      }
       console.log(`${chalk.white('消息数:')}        ${session.messages_count}`);
       console.log(`${chalk.white('总花费:')}        $${session.total_cost_usd.toFixed(4)}`);
       console.log(`${chalk.white('创建时间:')}      ${new Date(session.created_at).toLocaleString()}`);
@@ -1838,6 +1908,642 @@ async function tasksMenu() {
 
   console.log('');
   await tasksMenu();
+}
+
+// ========== 负载均衡管理 ==========
+
+// 查看负载均衡状态
+async function viewLoadBalanceStatus() {
+  const { running } = isServerRunning();
+
+  if (!running) {
+    console.log(chalk.red('✗ 服务未运行，请先启动服务'));
+    return;
+  }
+
+  const spinner = ora('获取负载均衡状态...').start();
+
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/status`, {}, config);
+    const data = await response.json();
+
+    spinner.stop();
+
+    if (data.success) {
+      // API 直接返回 strategy, failover, providers，不是嵌套在 status 下
+      const strategy = data.strategy || 'none';
+      const failover = data.failover || false;
+      const providers = data.providers || [];
+
+      console.log('');
+      console.log(chalk.bold.cyan('负载均衡状态：'));
+      console.log('');
+
+      if (strategy === 'none') {
+        console.log(chalk.gray('负载均衡未启用（未配置 providers）'));
+        console.log('');
+        console.log(chalk.gray('提示: 在 config.json 中添加 providers 配置以启用负载均衡'));
+      } else {
+        console.log(`${chalk.white('策略:')} ${strategy === 'round-robin' ? '轮询 (Round Robin)' : '权重 (Weighted)'}`);
+        console.log(`${chalk.white('故障转移:')} ${failover ? '启用' : '禁用'}`);
+        console.log('');
+
+        if (providers.length > 0) {
+          console.log(chalk.bold.white('Provider 列表：'));
+          console.log('');
+          providers.forEach((provider, index) => {
+            const healthIcon = provider.healthy ? chalk.green('✓') : chalk.red('✗');
+            const healthText = provider.healthy ? chalk.green('健康') : chalk.red('不健康');
+            console.log(`${chalk.bold((index + 1) + '.')} ${chalk.white(provider.name || provider.id)}`);
+            console.log(`   ${healthIcon} 状态: ${healthText} | ${chalk.gray('权重:')} ${provider.weight} | ${chalk.gray('绑定会话:')} ${provider.boundSessions}`);
+            console.log(`   ${chalk.gray('请求总数:')} ${provider.totalRequests} | ${chalk.gray('连续失败:')} ${provider.consecutiveFailures}`);
+            console.log('');
+          });
+        } else {
+          console.log(chalk.gray('没有配置 Provider'));
+        }
+      }
+    } else {
+      console.log(chalk.red('获取负载均衡状态失败: ' + (data.error || '未知错误')));
+    }
+  } catch (error) {
+    spinner.fail('获取负载均衡状态失败: ' + error.message);
+  }
+}
+
+// 查看会话绑定
+async function viewSessionBindings() {
+  const { running } = isServerRunning();
+
+  if (!running) {
+    console.log(chalk.red('✗ 服务未运行，请先启动服务'));
+    return;
+  }
+
+  const spinner = ora('获取会话绑定...').start();
+
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/bindings`, {}, config);
+    const data = await response.json();
+
+    spinner.stop();
+
+    if (data.success) {
+      const bindings = data.bindings;
+      const entries = Object.entries(bindings);
+
+      console.log('');
+      console.log(chalk.bold.cyan('会话绑定：'));
+      console.log('');
+
+      if (entries.length > 0) {
+        entries.forEach(([sessionId, providerId], index) => {
+          console.log(`${chalk.bold((index + 1) + '.')} ${chalk.white('Session:')} ${sessionId.substring(0, 8)}... → ${chalk.white('Provider:')} ${providerId}`);
+        });
+        console.log('');
+        console.log(chalk.gray(`总计: ${entries.length} 个会话绑定`));
+      } else {
+        console.log(chalk.gray('没有会话绑定'));
+      }
+      console.log('');
+    } else {
+      console.log(chalk.red('获取会话绑定失败'));
+    }
+  } catch (error) {
+    spinner.fail('获取会话绑定失败: ' + error.message);
+  }
+}
+
+// 重置 Provider 健康状态
+async function resetProviderHealth() {
+  const { running } = isServerRunning();
+
+  if (!running) {
+    console.log(chalk.red('✗ 服务未运行，请先启动服务'));
+    return;
+  }
+
+  // 先获取 provider 列表
+  let providers = [];
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/status`, {}, config);
+    const data = await response.json();
+    if (data.success && data.providers) {
+      providers = data.providers;
+    }
+  } catch (error) {
+    console.log(chalk.red('获取 Provider 列表失败: ' + error.message));
+    return;
+  }
+
+  if (providers.length === 0) {
+    console.log(chalk.yellow('没有可用的 Provider（请先在 ~/.claude-code-server/config.json 中配置 providers）'));
+    return;
+  }
+
+  const { providerId } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'providerId',
+      message: '选择要重置的 Provider',
+      choices: providers.map(p => ({
+        name: `${p.name || p.id} ${p.healthy ? chalk.green('(健康)') : chalk.red('(不健康)')}`,
+        value: p.id,
+      })),
+    },
+  ]);
+
+  const spinner = ora('重置 Provider 健康状态...').start();
+
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/providers/${providerId}/reset`, {
+      method: 'POST',
+    }, config);
+    const data = await response.json();
+
+    spinner.stop();
+
+    if (data.success) {
+      console.log(chalk.green(`✓ Provider ${providerId} 已重置为健康状态`));
+    } else {
+      console.log(chalk.red(`重置失败: ${data.error}`));
+    }
+  } catch (error) {
+    spinner.fail('重置失败: ' + error.message);
+  }
+}
+
+// 启用/禁用 Provider
+async function toggleProvider() {
+  const { running } = isServerRunning();
+
+  if (!running) {
+    console.log(chalk.red('✗ 服务未运行，请先启动服务'));
+    return;
+  }
+
+  // 先获取 provider 列表
+  let providers = [];
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/status`, {}, config);
+    const data = await response.json();
+    if (data.success && data.providers) {
+      providers = data.providers;
+    }
+  } catch (error) {
+    console.log(chalk.red('获取 Provider 列表失败: ' + error.message));
+    return;
+  }
+
+  if (providers.length === 0) {
+    console.log(chalk.yellow('没有可用的 Provider（请先在 ~/.claude-code-server/config.json 中配置 providers）'));
+    return;
+  }
+
+  const { action } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'action',
+      message: '选择操作',
+      choices: [
+        { name: '✓ 启用 Provider', value: 'enable' },
+        { name: '✗ 禁用 Provider', value: 'disable' },
+        { name: '◀ 返回', value: 'back' },
+      ],
+    },
+  ]);
+
+  if (action === 'back') {
+    return;
+  }
+
+  const { providerId } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'providerId',
+      message: `选择要${action === 'enable' ? '启用' : '禁用'}的 Provider`,
+      choices: providers.map(p => ({
+        name: `${p.name || p.id} ${p.enabled ? chalk.green('(已启用)') : chalk.gray('(已禁用)')}`,
+        value: p.id,
+      })),
+    },
+  ]);
+
+  const spinner = ora(`${action === 'enable' ? '启用' : '禁用'} Provider...`).start();
+
+  try {
+    const response = await authenticatedFetch(`http://localhost:${config.port}/api/load-balance/providers/${providerId}/${action}`, {
+      method: 'POST',
+    }, config);
+    const data = await response.json();
+
+    spinner.stop();
+
+    if (data.success) {
+      console.log(chalk.green(`✓ Provider ${providerId} 已${action === 'enable' ? '启用' : '禁用'}`));
+    } else {
+      console.log(chalk.red(`操作失败: ${data.error}`));
+    }
+  } catch (error) {
+    spinner.fail('操作失败: ' + error.message);
+  }
+}
+
+// ========== 负载均衡配置 ==========
+
+// 读取配置文件
+function readConfigFile() {
+  const configPath = path.join(os.homedir(), '.claude-code-server', 'config.json');
+  try {
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, 'utf8');
+      return JSON.parse(content);
+    }
+  } catch (error) {
+    console.log(chalk.red('读取配置文件失败: ' + error.message));
+  }
+  return {};
+}
+
+// 写入配置文件
+function writeConfigFile(configData) {
+  const configPath = path.join(os.homedir(), '.claude-code-server', 'config.json');
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(configData, null, 2), 'utf8');
+    return true;
+  } catch (error) {
+    console.log(chalk.red('写入配置文件失败: ' + error.message));
+    return false;
+  }
+}
+
+// 添加 Provider
+async function addProvider() {
+  console.log('');
+  console.log(chalk.bold.cyan('添加新 Provider'));
+  console.log('');
+
+  const answers = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'id',
+      message: 'Provider ID (唯一标识，如 provider-1):',
+      validate: (input) => {
+        if (!input || !input.trim()) return '请输入 Provider ID';
+        if (!/^[a-zA-Z0-9_-]+$/.test(input)) return 'ID 只能包含字母、数字、下划线和连字符';
+        return true;
+      },
+    },
+    {
+      type: 'input',
+      name: 'name',
+      message: 'Provider 名称 (显示名称):',
+      default: (answers) => answers.id,
+    },
+    {
+      type: 'input',
+      name: 'apiKey',
+      message: 'Auth Token (ANTHROPIC_AUTH_TOKEN):',
+      validate: (input) => input && input.trim() ? true : '请输入 Auth Token',
+    },
+    {
+      type: 'input',
+      name: 'baseUrl',
+      message: 'Base URL (默认: https://api.anthropic.com):',
+      default: 'https://api.anthropic.com',
+    },
+    {
+      type: 'number',
+      name: 'weight',
+      message: '权重 (用于加权策略，默认 1):',
+      default: 1,
+      min: 1,
+      max: 100,
+    },
+    {
+      type: 'confirm',
+      name: 'enabled',
+      message: '是否启用?',
+      default: true,
+    },
+    {
+      type: 'confirm',
+      name: 'addEnv',
+      message: '是否添加自定义环境变量?',
+      default: false,
+    },
+  ]);
+
+  // 如果需要添加环境变量
+  let env = {};
+  if (answers.addEnv) {
+    let addMore = true;
+    while (addMore) {
+      const envAnswer = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'key',
+          message: '环境变量名 (如 CUSTOM_API_HEADER):',
+          validate: (input) => input && input.trim() ? true : '请输入环境变量名',
+        },
+        {
+          type: 'input',
+          name: 'value',
+          message: '环境变量值:',
+          validate: (input) => input !== undefined && input !== null ? true : '请输入环境变量值',
+        },
+        {
+          type: 'confirm',
+          name: 'addMore',
+          message: '继续添加更多环境变量?',
+          default: false,
+        },
+      ]);
+      env[envAnswer.key] = envAnswer.value;
+      addMore = envAnswer.addMore;
+    }
+  }
+
+  // 读取当前配置
+  const configData = readConfigFile();
+  if (!configData.providers) {
+    configData.providers = [];
+  }
+
+  // 检查 ID 是否已存在
+  if (configData.providers.some(p => p.id === answers.id)) {
+    console.log(chalk.red(`Provider ID "${answers.id}" 已存在`));
+    return;
+  }
+
+  // 添加新 Provider
+  const newProvider = {
+    id: answers.id,
+    name: answers.name,
+    apiKey: answers.apiKey,
+    baseUrl: answers.baseUrl,
+    weight: answers.weight,
+    enabled: answers.enabled,
+  };
+
+  if (Object.keys(env).length > 0) {
+    newProvider.env = env;
+  }
+
+  configData.providers.push(newProvider);
+
+  // 如果是第一个 provider，自动设置 loadBalance
+  if (!configData.loadBalance) {
+    configData.loadBalance = {
+      strategy: 'round-robin',
+      failureThreshold: 3,
+      failover: true,
+    };
+  }
+
+  if (writeConfigFile(configData)) {
+    console.log(chalk.green(`✓ Provider "${answers.name}" 已添加`));
+    console.log(chalk.gray('配置已保存，服务器将自动重新加载'));
+  }
+}
+
+// 编辑 Provider
+async function editProvider() {
+  const configData = readConfigFile();
+  const providers = configData.providers || [];
+
+  if (providers.length === 0) {
+    console.log(chalk.yellow('没有可编辑的 Provider'));
+    return;
+  }
+
+  const { providerId } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'providerId',
+      message: '选择要编辑的 Provider',
+      choices: providers.map(p => ({
+        name: `${p.name || p.id} (${p.enabled ? chalk.green('已启用') : chalk.gray('已禁用')})`,
+        value: p.id,
+      })),
+    },
+  ]);
+
+  const provider = providers.find(p => p.id === providerId);
+  if (!provider) {
+    console.log(chalk.red('Provider 未找到'));
+    return;
+  }
+
+  console.log('');
+  console.log(chalk.bold.cyan(`编辑 Provider: ${provider.name || provider.id}`));
+  console.log(chalk.gray('（直接回车保持当前值）'));
+  console.log('');
+
+  const answers = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'name',
+      message: 'Provider 名称:',
+      default: provider.name,
+    },
+    {
+      type: 'input',
+      name: 'apiKey',
+      message: 'API Key (留空保持不变):',
+    },
+    {
+      type: 'input',
+      name: 'baseUrl',
+      message: 'Base URL:',
+      default: provider.baseUrl,
+    },
+    {
+      type: 'number',
+      name: 'weight',
+      message: '权重:',
+      default: provider.weight || 1,
+      min: 1,
+      max: 100,
+    },
+    {
+      type: 'confirm',
+      name: 'enabled',
+      message: '是否启用?',
+      default: provider.enabled !== false,
+    },
+  ]);
+
+  // 更新 Provider
+  provider.name = answers.name;
+  if (answers.apiKey && answers.apiKey.trim()) {
+    provider.apiKey = answers.apiKey;
+  }
+  provider.baseUrl = answers.baseUrl;
+  provider.weight = answers.weight;
+  provider.enabled = answers.enabled;
+
+  if (writeConfigFile(configData)) {
+    console.log(chalk.green(`✓ Provider "${provider.name}" 已更新`));
+    console.log(chalk.gray('配置已保存，服务器将自动重新加载'));
+  }
+}
+
+// 删除 Provider
+async function removeProvider() {
+  const configData = readConfigFile();
+  const providers = configData.providers || [];
+
+  if (providers.length === 0) {
+    console.log(chalk.yellow('没有可删除的 Provider'));
+    return;
+  }
+
+  const { providerId } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'providerId',
+      message: '选择要删除的 Provider',
+      choices: providers.map(p => ({
+        name: `${p.name || p.id} (${p.enabled ? chalk.green('已启用') : chalk.gray('已禁用')})`,
+        value: p.id,
+      })),
+    },
+  ]);
+
+  const { confirm } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'confirm',
+      message: '确认删除此 Provider?',
+      default: false,
+    },
+  ]);
+
+  if (!confirm) {
+    console.log(chalk.gray('已取消'));
+    return;
+  }
+
+  const index = providers.findIndex(p => p.id === providerId);
+  if (index !== -1) {
+    const removed = providers.splice(index, 1)[0];
+    configData.providers = providers;
+
+    if (writeConfigFile(configData)) {
+      console.log(chalk.green(`✓ Provider "${removed.name || removed.id}" 已删除`));
+      console.log(chalk.gray('配置已保存，服务器将自动重新加载'));
+    }
+  }
+}
+
+// 配置负载均衡策略
+async function configureLoadBalance() {
+  const configData = readConfigFile();
+
+  console.log('');
+  console.log(chalk.bold.cyan('配置负载均衡策略'));
+  console.log('');
+
+  const currentStrategy = configData.loadBalance?.strategy || 'round-robin';
+  const currentFailover = configData.loadBalance?.failover !== false;
+  const currentThreshold = configData.loadBalance?.failureThreshold || 3;
+
+  const answers = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'strategy',
+      message: '选择负载均衡策略:',
+      choices: [
+        { name: '轮询 (Round Robin) - 依次分配', value: 'round-robin' },
+        { name: '加权 (Weighted) - 按权重分配', value: 'weighted' },
+      ],
+      default: currentStrategy,
+    },
+    {
+      type: 'confirm',
+      name: 'failover',
+      message: '启用故障转移 (当 Provider 不健康时自动切换)?',
+      default: currentFailover,
+    },
+    {
+      type: 'number',
+      name: 'failureThreshold',
+      message: '连续失败多少次后标记为不健康:',
+      default: currentThreshold,
+      min: 1,
+      max: 10,
+    },
+  ]);
+
+  configData.loadBalance = {
+    strategy: answers.strategy,
+    failover: answers.failover,
+    failureThreshold: answers.failureThreshold,
+  };
+
+  if (writeConfigFile(configData)) {
+    console.log(chalk.green('✓ 负载均衡配置已更新'));
+    console.log(chalk.gray('配置已保存，服务器将自动重新加载'));
+  }
+}
+
+// 负载均衡管理菜单
+async function loadBalanceMenu() {
+  const { action } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'action',
+      message: '负载均衡管理',
+      pageSize: 12,
+      choices: [
+        { name: '📊 查看负载均衡状态', value: 'status' },
+        { name: '🔗 查看会话绑定', value: 'bindings' },
+        new inquirer.Separator(),
+        { name: '➕ 添加 Provider', value: 'add' },
+        { name: '✏️  编辑 Provider', value: 'edit' },
+        { name: '🗑️  删除 Provider', value: 'remove' },
+        new inquirer.Separator(),
+        { name: '⚙️  配置负载均衡策略', value: 'config' },
+        { name: '🔄 重置 Provider 健康状态', value: 'reset' },
+        { name: '⚡ 启用/禁用 Provider', value: 'toggle' },
+        new inquirer.Separator(),
+        { name: '◀ 返回主菜单', value: 'back' },
+      ],
+    },
+  ]);
+
+  switch (action) {
+    case 'status':
+      await viewLoadBalanceStatus();
+      break;
+    case 'bindings':
+      await viewSessionBindings();
+      break;
+    case 'add':
+      await addProvider();
+      break;
+    case 'edit':
+      await editProvider();
+      break;
+    case 'remove':
+      await removeProvider();
+      break;
+    case 'config':
+      await configureLoadBalance();
+      break;
+    case 'reset':
+      await resetProviderHealth();
+      break;
+    case 'toggle':
+      await toggleProvider();
+      break;
+    case 'back':
+      return;
+  }
+
+  console.log('');
+  await loadBalanceMenu();
 }
 
 // 主菜单

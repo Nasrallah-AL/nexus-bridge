@@ -51,7 +51,7 @@ const { ensureSession } = require('../common/session');
  *       '501':
  *         description: Feature not implemented (streaming)
  */
-function createMessagesRoute(claudeExecutor, config, sessionManager) {
+function createMessagesRoute(claudeExecutor, config, sessionManager, providerRouter) {
   router.post('/', async (req, res) => {
     // 使用公共验证逻辑
     const validated = validateAndParseRequest(req, res, config);
@@ -92,6 +92,9 @@ function createMessagesRoute(claudeExecutor, config, sessionManager) {
       }
     }
 
+    // Select provider for load balancing
+    const provider = providerRouter ? providerRouter.select(sessionId) : null;
+
     // 同步执行
     const result = await claudeExecutor.execute({
       prompt: validated.prompt,
@@ -106,7 +109,15 @@ function createMessagesRoute(claudeExecutor, config, sessionManager) {
       mcpConfig: validated.mcpConfig,
       permissionMode: validated.permissionMode,
       stream: validated.stream,
+      provider,
     });
+
+    // Record result for load balancing health tracking
+    if (provider && providerRouter) {
+      result.success
+        ? providerRouter.recordSuccess(provider.id)
+        : providerRouter.recordFailure(provider.id);
+    }
 
     // 返回结果（包含 session_id）
     const statusCode = result.success ? 200 : 500;

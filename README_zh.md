@@ -32,6 +32,7 @@ Claude Code Server 是一个功能完整的 HTTP API 服务，将 Anthropic Clau
 - 🖥️ **TUI 管理工具** - 可视化服务器管理和监控
 - 🛑 **任务取消** - 实时取消运行中的任务
 - 💾 **消息存储** - 存储和检索对话消息
+- ⚖️ **负载均衡** - 多 API Key 支持，会话绑定，轮询/权重策略，自动故障转移
 
 ## 🚀 快速开始
 
@@ -241,6 +242,151 @@ eventSource.addEventListener('error', (e) => {
 | `max_budget_usd` | number | 本次请求最大预算 |
 | `allowed_tools` | string[] | 允许的工具白名单 |
 | `disallowed_tools` | string[] | 禁用的工具黑名单 |
+
+## ⚖️ 负载均衡
+
+Claude Code Server 支持多 Provider 负载均衡与会话绑定，可以将请求分发到多个 Anthropic API Key 或第三方兼容端点。
+
+### 配置方法
+
+在 `~/.claude-code-server/config.json` 中添加 `providers` 和 `loadBalance` 配置：
+
+```json
+{
+  "providers": [
+    {
+      "id": "main",
+      "name": "主 API Key",
+      "apiKey": "sk-ant-api03-xxx",
+      "baseUrl": "https://api.anthropic.com",
+      "weight": 3,
+      "enabled": true
+    },
+    {
+      "id": "zhipu",
+      "name": "智谱 GLM",
+      "apiKey": "your-zhipu-api-key",
+      "baseUrl": "https://open.bigmodel.cn/api/anthropic",
+      "env": {
+        "ANTHROPIC_API_KEY": "",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-5",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5",
+        "ANTHROPIC_MODEL": "glm-5",
+        "ANTHROPIC_REASONING_MODEL": "glm-5",
+        "API_TIMEOUT_MS": "3000000",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+      },
+      "weight": 1,
+      "enabled": true
+    }
+  ],
+  "loadBalance": {
+    "strategy": "weighted",
+    "failover": true,
+    "failureThreshold": 3,
+    "recoveryTimeout": 60
+  }
+}
+```
+
+### 配置项说明
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `providers[].id` | string | 必填 | Provider 唯一标识 |
+| `providers[].name` | string | 必填 | 显示名称 |
+| `providers[].apiKey` | string | 必填 | Auth Token（注入为 `ANTHROPIC_AUTH_TOKEN` 和 `ANTHROPIC_API_KEY`） |
+| `providers[].baseUrl` | string | 可选 | API 端点 URL（注入为 `ANTHROPIC_BASE_URL`） |
+| `providers[].env` | object | 可选 | 额外的环境变量配置 |
+| `providers[].weight` | number | 1 | 权重策略的权重值（1-10） |
+| `providers[].enabled` | boolean | true | 是否启用 |
+| `loadBalance.strategy` | string | "round-robin" | 策略："round-robin"（轮询）或 "weighted"（权重） |
+| `loadBalance.failover` | boolean | false | 是否启用自动故障转移 |
+| `loadBalance.failureThreshold` | number | 3 | 连续失败多少次标记为不健康 |
+| `loadBalance.recoveryTimeout` | number | 60 | 不健康后多少秒尝试恢复 |
+
+### 环境变量配置
+
+`providers[].env` 对象允许在为该 Provider 启动 Claude CLI 时注入额外的环境变量。常见用途：
+
+| 变量 | 说明 |
+|------|------|
+| `ANTHROPIC_API_KEY` | 备用认证令牌 |
+| `ANTHROPIC_MODEL` | 默认模型覆盖 |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | 默认 Sonnet 模型 |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | 默认 Haiku 模型 |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | 默认 Opus 模型 |
+| `ANTHROPIC_REASONING_MODEL` | 推理模型覆盖 |
+| `API_TIMEOUT_MS` | API 超时时间（毫秒） |
+| `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | 禁用非必要的网络流量 |
+| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | 启用实验性 Agent Teams |
+
+### 功能特性
+
+**会话绑定**：相同的 `session_id` 始终路由到同一个 Provider，确保对话连续性。
+
+**策略模式**：
+- **轮询（Round-Robin）**：均匀分配请求到所有启用的 Provider
+- **权重（Weighted）**：按权重比例分配请求（如权重 3:1 = 75%:25%）
+
+**自动故障转移**：启用后，当绑定的 Provider 变为不健康状态时，自动切换会话到健康的 Provider。
+
+### 管理 API
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/load-balance/status` | GET | 查看所有 Provider 健康状态、请求数、绑定数 |
+| `/api/load-balance/bindings` | GET | 查看当前会话-Provider 绑定关系 |
+| `/api/load-balance/providers/:id/reset` | POST | 重置 Provider 健康状态 |
+| `/api/load-balance/providers/:id/enable` | POST | 启用 Provider |
+| `/api/load-balance/providers/:id/disable` | POST | 禁用 Provider |
+
+**示例 - 查看状态：**
+```bash
+curl http://localhost:5546/api/load-balance/status
+```
+
+**响应示例：**
+```json
+{
+  "success": true,
+  "strategy": "weighted",
+  "failover": true,
+  "providers": [
+    {
+      "id": "main",
+      "name": "主 API Key",
+      "weight": 3,
+      "enabled": true,
+      "healthy": true,
+      "consecutiveFailures": 0,
+      "totalRequests": 42,
+      "boundSessions": 5
+    },
+    {
+      "id": "backup",
+      "name": "备用 API Key",
+      "weight": 1,
+      "enabled": true,
+      "healthy": false,
+      "consecutiveFailures": 3,
+      "totalRequests": 8,
+      "boundSessions": 1
+    }
+  ]
+}
+```
+
+**示例 - 重置不健康的 Provider：**
+```bash
+curl -X POST http://localhost:5546/api/load-balance/providers/backup/reset
+```
+
+### 向后兼容
+
+当未配置 `providers` 时，系统行为与之前完全一致，使用默认的 Claude CLI 配置。
 
 ## 🖥️ TUI 管理工具
 

@@ -118,6 +118,7 @@ class Validators {
       disallowed_tools: Joi.array().items(Joi.string()).optional(),
       stream: Joi.boolean().optional(),
       permission_mode: Joi.string().valid('default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions').optional(),
+      provider_id: Joi.string().allow('', null).optional(),  // Optional: force specific provider
     });
 
     const { error, value } = schema.validate(data);

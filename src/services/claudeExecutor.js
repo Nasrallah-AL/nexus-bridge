@@ -1,5 +1,9 @@
 const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const getLogger = require('../utils/logger');
+const { injectProviderEnv, getSafeProviderInfo, getEnvStatus } = require('../utils/providerEnv');
 
 /**
  * Claude 执行器
@@ -18,6 +22,7 @@ class ClaudeExecutor {
    */
   async execute(options) {
     const {
+      provider = null,
       prompt,
       projectPath,
       model = this.config.defaultModel,
@@ -122,6 +127,7 @@ class ClaudeExecutor {
       try {
         result = await this.spawnCommand(projectPath, args, {
           onSpawn: options.onSpawn,
+          provider,
         });
       } catch (spawnErr) {
         // 如果是 "Session ID already in use" 错误，尝试使用 --resume 重试
@@ -139,7 +145,7 @@ class ClaudeExecutor {
             args: retryArgs.join(' ').substring(0, 200) + '...',
           });
 
-          result = await this.spawnCommand(projectPath, retryArgs);
+          result = await this.spawnCommand(projectPath, retryArgs, { provider });
           this.logger.info(`Successfully resumed session`, { session_id: sessionId });
         } else {
           // 其他错误，直接抛出
@@ -270,7 +276,7 @@ class ClaudeExecutor {
    * 使用 spawn 执行命令
    */
   spawnCommand(projectPath, args, options = {}) {
-    const { onSpawn } = options;
+    const { onSpawn, provider } = options;
 
     return new Promise((resolve, reject) => {
       const env = { ...process.env };
@@ -281,12 +287,105 @@ class ClaudeExecutor {
         env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
       }
 
-      // 确保项目目录存在
+      // Create session-specific HOME directory to isolate from local ~/.claude/settings.json
+      // This ensures provider environment variables take precedence
+      // Use session_id for persistent conversation data
       const fs = require('fs');
+      // Use project data directory for session storage
+      const dataDir = this.config.dataDir || path.join(process.cwd(), 'data');
+      const homeBase = path.join(dataDir, 'sessions');
+      // Ensure base directory exists
+      if (!fs.existsSync(homeBase)) {
+        fs.mkdirSync(homeBase, { recursive: true });
+      }
+      // Use session_id if available, otherwise use random temp dir
+      const homeName = sessionId ? `session-${sessionId}` : fs.mkdtempSync(path.join(homeBase, 'temp-'));
+      const sessionHome = path.join(homeBase, homeName);
+      if (!fs.existsSync(sessionHome)) {
+        fs.mkdirSync(sessionHome, { recursive: true });
+      }
+      env.HOME = sessionHome;
+
+      // Create symlinks to global Claude config files for skills, plugins, etc.
+      // Link everything in ~/.claude/ except settings.json and settings.local.json
+      const realHome = os.homedir();
+      const globalClaudeDir = path.join(realHome, '.claude');
+      const sessionClaudeDir = path.join(sessionHome, '.claude');
+
+      // Files/directories to exclude from symlink (these may contain provider-specific settings)
+      const excludeFromSymlink = ['settings.json', 'settings.local.json'];
+
+      if (fs.existsSync(globalClaudeDir)) {
+        // Ensure session .claude directory exists
+        if (!fs.existsSync(sessionClaudeDir)) {
+          fs.mkdirSync(sessionClaudeDir, { recursive: true });
+        }
+
+        // Symlink all contents from global ~/.claude/ except excluded files
+        const claudeDirContents = fs.readdirSync(globalClaudeDir);
+        for (const item of claudeDirContents) {
+          if (excludeFromSymlink.includes(item)) {
+            continue; // Skip settings files
+          }
+
+          const globalItemPath = path.join(globalClaudeDir, item);
+          const sessionItemPath = path.join(sessionClaudeDir, item);
+
+          // Only create symlink if target doesn't exist
+          if (!fs.existsSync(sessionItemPath)) {
+            try {
+              const stat = fs.lstatSync(globalItemPath);
+              const linkType = stat.isDirectory() ? 'junction' : 'file';
+              fs.symlinkSync(globalItemPath, sessionItemPath, linkType);
+              this.logger.debug(`Created symlink for ~/.claude/${item}`, { sessionItemPath, globalItemPath });
+            } catch (linkErr) {
+              this.logger.warn(`Failed to create symlink for ~/.claude/${item}`, { error: linkErr.message });
+            }
+          }
+        }
+      }
+
+      // Symlink ~/.claude.json (for accessing global settings)
+      const globalClaudeJson = path.join(realHome, '.claude.json');
+      const sessionClaudeJsonLink = path.join(sessionHome, '.claude.json');
+      if (fs.existsSync(globalClaudeJson) && !fs.existsSync(sessionClaudeJsonLink)) {
+        try {
+          fs.symlinkSync(globalClaudeJson, sessionClaudeJsonLink, 'file');
+          this.logger.debug(`Created symlink for .claude.json`, { sessionClaudeJsonLink, globalClaudeJson });
+        } catch (linkErr) {
+          this.logger.warn(`Failed to create .claude.json symlink`, { error: linkErr.message });
+        }
+      }
+
+      // Unset CLAUDECODE to allow running Claude CLI from within Claude Code
+      // Without this, Claude CLI detects nested session and refuses to run
+      delete env.CLAUDECODE;
+
+      this.logger.info(`Using session HOME directory`, {
+        sessionHome,
+        CLAUDECODE_unset: true,
+        session_id: sessionId,
+        reason: 'Isolate from local ~/.claude/settings.json and allow nested execution',
+      });
+
+      // Inject Provider environment variables for load balancing
+      if (provider) {
+        this.logger.info(`Injecting provider env vars`, getSafeProviderInfo(provider));
+        injectProviderEnv(env, provider);
+        this.logger.info(`Provider env vars injected`, getEnvStatus(env));
+      } else {
+        this.logger.warn(`No provider selected, using system env vars`);
+      }
+
+      // 确保项目目录存在
       if (!fs.existsSync(projectPath)) {
         try {
           fs.mkdirSync(projectPath, { recursive: true });
         } catch (mkdirErr) {
+          // Clean up temp HOME directory on error (only for non-session temp dirs)
+          if (!sessionId) {
+            try { fs.rmSync(sessionHome, { recursive: true, force: true }); } catch (e) {}
+          }
           const error = new Error(`Failed to create project directory: ${mkdirErr.message}`);
           error.details = {
             projectPath,
@@ -309,6 +408,31 @@ class ClaudeExecutor {
 
       let stdout = '';
       let stderr = '';
+      let sessionHomeCleaned = false; // Flag to prevent double cleanup
+
+      // Helper to cleanup temp directory safely
+      // Only cleanup if it's a temporary directory (no sessionId)
+      const cleanupSessionHome = () => {
+        if (sessionHomeCleaned) return;
+        sessionHomeCleaned = true;
+
+        // Don't cleanup session directories - they need to persist for --resume
+        if (sessionId) {
+          this.logger.debug(`Keeping session HOME directory for future resume`, { sessionHome });
+          return;
+        }
+
+        // Only cleanup temporary directories
+        try {
+          fs.rmSync(sessionHome, { recursive: true, force: true });
+          this.logger.debug(`Cleaned up temporary HOME directory`, { sessionHome });
+        } catch (cleanupErr) {
+          this.logger.warn(`Failed to cleanup temporary HOME directory`, {
+            sessionHome,
+            error: cleanupErr.message,
+          });
+        }
+      };
 
       child.stdout.on('data', (data) => {
         stdout += data.toString();
@@ -326,6 +450,10 @@ class ClaudeExecutor {
 
       child.on('close', (code) => {
         clearTimeout(timeout);
+
+        // Cleanup temporary HOME directory (safe - uses flag)
+        cleanupSessionHome();
+
         const output = stdout || stderr;
 
         if (code !== 0) {
@@ -365,6 +493,9 @@ class ClaudeExecutor {
 
       child.on('error', (err) => {
         clearTimeout(timeout);
+
+        // Cleanup temporary HOME directory on error (safe - uses flag)
+        cleanupSessionHome();
 
         // 根据错误类型提供更友好的错误信息
         let errorMessage = `Failed to start Claude CLI: ${err.message}`;

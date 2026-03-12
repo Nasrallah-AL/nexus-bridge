@@ -1,17 +1,20 @@
 const { spawn } = require('child_process');
+const os = require('os');
 const getLogger = require('../utils/logger');
+const { injectProviderEnv, getSafeProviderInfo, getEnvStatus } = require('../utils/providerEnv');
 
 /**
  * Claude 流式执行器
  * 使用 --output-format stream-json 输出 SSE 事件流
  */
 class ClaudeStreamExecutor {
-  constructor(config, sessionStore = null, statsStore = null, messageStore = null, streamManager = null) {
+  constructor(config, sessionStore = null, statsStore = null, messageStore = null, streamManager = null, providerRouter = null) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.statsStore = statsStore;
     this.messageStore = messageStore;
     this.streamManager = streamManager;
+    this.providerRouter = providerRouter;
     this.logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
   }
 
@@ -147,7 +150,19 @@ class ClaudeStreamExecutor {
       allowedTools = null,
       disallowedTools = null,
       permissionMode = null,
+      providerId = null,  // Optional: force specific provider
     } = options;
+
+    // Select provider for load balancing
+    let provider = null;
+    if (this.providerRouter) {
+      provider = this.providerRouter.select(sessionId, providerId);
+      this.logger.info(`Selected provider for stream`, {
+        session_id: sessionId,
+        provider_id: provider?.id || 'none',
+        forced: !!providerId,
+      });
+    }
 
     const startTime = Date.now();
 
@@ -254,17 +269,110 @@ class ClaudeStreamExecutor {
     });
 
     // 执行流式命令
-    this.spawnStreamCommand(projectPath, args, res, Date.now(), sessionId, model, streamId, streamingMessageId);
+    this.spawnStreamCommand(projectPath, args, res, Date.now(), sessionId, model, streamId, streamingMessageId, provider);
   }
 
   /**
    * 生成流式命令并处理输出
    */
-  spawnStreamCommand(projectPath, args, res, startTime, sessionId, model, streamId = null, streamingMessageId = null) {
+  spawnStreamCommand(projectPath, args, res, startTime, sessionId, model, streamId = null, streamingMessageId = null, provider = null) {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+
     const env = { ...process.env };
 
     if (this.config.nodeBinDir) {
       env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
+    }
+
+    // Create session-specific HOME directory to isolate from local ~/.claude/settings.json
+    // This ensures provider environment variables take precedence
+    // Use session_id for persistent conversation data
+    // Use project data directory for session storage
+    const dataDir = this.config.dataDir || path.join(process.cwd(), 'data');
+    const homeBase = path.join(dataDir, 'sessions');
+    // Ensure base directory exists
+    if (!fs.existsSync(homeBase)) {
+      fs.mkdirSync(homeBase, { recursive: true });
+    }
+    // Use session_id for persistent session data
+    const homeName = sessionId ? `session-${sessionId}` : fs.mkdtempSync(path.join(homeBase, 'temp-'));
+    const sessionHome = path.join(homeBase, homeName);
+    if (!fs.existsSync(sessionHome)) {
+      fs.mkdirSync(sessionHome, { recursive: true });
+    }
+    env.HOME = sessionHome;
+
+    // Create symlinks to global Claude config files for skills, plugins, etc.
+    // Link everything in ~/.claude/ except settings.json and settings.local.json
+    const realHome = os.homedir();
+    const globalClaudeDir = path.join(realHome, '.claude');
+    const sessionClaudeDir = path.join(sessionHome, '.claude');
+
+    // Files/directories to exclude from symlink (these may contain provider-specific settings)
+    const excludeFromSymlink = ['settings.json', 'settings.local.json'];
+
+    if (fs.existsSync(globalClaudeDir)) {
+      // Ensure session .claude directory exists
+      if (!fs.existsSync(sessionClaudeDir)) {
+        fs.mkdirSync(sessionClaudeDir, { recursive: true });
+      }
+
+      // Symlink all contents from global ~/.claude/ except excluded files
+      const claudeDirContents = fs.readdirSync(globalClaudeDir);
+      for (const item of claudeDirContents) {
+        if (excludeFromSymlink.includes(item)) {
+          continue; // Skip settings files
+        }
+
+        const globalItemPath = path.join(globalClaudeDir, item);
+        const sessionItemPath = path.join(sessionClaudeDir, item);
+
+        // Only create symlink if target doesn't exist
+        if (!fs.existsSync(sessionItemPath)) {
+          try {
+            const stat = fs.lstatSync(globalItemPath);
+            const linkType = stat.isDirectory() ? 'junction' : 'file';
+            fs.symlinkSync(globalItemPath, sessionItemPath, linkType);
+            this.logger.debug(`Created symlink for ~/.claude/${item}`, { sessionItemPath, globalItemPath });
+          } catch (linkErr) {
+            this.logger.warn(`Failed to create symlink for ~/.claude/${item}`, { error: linkErr.message });
+          }
+        }
+      }
+    }
+
+    // Symlink ~/.claude.json (for accessing global settings)
+    const globalClaudeJson = path.join(realHome, '.claude.json');
+    const sessionClaudeJsonLink = path.join(sessionHome, '.claude.json');
+    if (fs.existsSync(globalClaudeJson) && !fs.existsSync(sessionClaudeJsonLink)) {
+      try {
+        fs.symlinkSync(globalClaudeJson, sessionClaudeJsonLink, 'file');
+        this.logger.debug(`Created symlink for .claude.json`, { sessionClaudeJsonLink, globalClaudeJson });
+      } catch (linkErr) {
+        this.logger.warn(`Failed to create .claude.json symlink`, { error: linkErr.message });
+      }
+    }
+
+    // Unset CLAUDECODE to allow running Claude CLI from within Claude Code
+    // Without this, Claude CLI detects nested session and refuses to run
+    delete env.CLAUDECODE;
+
+    this.logger.info(`Using session HOME directory for stream`, {
+      sessionHome,
+      CLAUDECODE_unset: true,
+      session_id: sessionId,
+      stream_id: streamId,
+    });
+
+    // Inject Provider environment variables for load balancing
+    if (provider) {
+      this.logger.info(`Injecting provider env vars for stream`, getSafeProviderInfo(provider));
+      injectProviderEnv(env, provider);
+      this.logger.info(`Provider env vars injected for stream`, getEnvStatus(env));
+    } else {
+      this.logger.warn(`No provider selected for stream, using system env vars`);
     }
 
     const child = spawn(this.config.claudePath, args, {
@@ -283,6 +391,37 @@ class ClaudeStreamExecutor {
     let actualModel = model;
     // 跟踪原始客户端是否已断开
     let clientDisconnected = false;
+    // Flag to prevent double cleanup of session directory
+    let sessionHomeCleaned = false;
+
+    // Helper to cleanup session directory safely
+    // Only cleanup if it's a temporary directory (no sessionId)
+    const cleanupSessionHome = () => {
+      if (sessionHomeCleaned) return;
+      sessionHomeCleaned = true;
+
+      // Don't cleanup session directories - they need to persist for --resume
+      if (sessionId) {
+        this.logger.debug(`Keeping session HOME directory for future resume`, {
+          sessionHome,
+          session_id: sessionId,
+        });
+        return;
+      }
+
+      // Only cleanup temporary directories
+      try {
+        fs.rmSync(sessionHome, { recursive: true, force: true });
+        this.logger.debug(`Cleaned up temporary HOME directory for stream`, {
+          sessionHome,
+        });
+      } catch (cleanupErr) {
+        this.logger.warn(`Failed to cleanup temporary HOME directory for stream`, {
+          sessionHome,
+          error: cleanupErr.message,
+        });
+      }
+    };
 
     // 如果有 streamManager，注册流并添加客户端
     if (streamId && this.streamManager) {
@@ -319,14 +458,12 @@ class ClaudeStreamExecutor {
           try {
             const json = JSON.parse(line);
 
-            // 转发所有事件到客户端（如果客户端还连接）
-            if (!clientDisconnected) {
-              this.sendSSEEvent(res, 'message', json);
-            }
-
-            // 如果有 streamManager，广播到所有客户端
+            // 如果有 streamManager，广播到所有客户端（包括初始客户端）
             if (streamId && this.streamManager) {
               this.streamManager.broadcast(streamId, 'message', json);
+            } else if (!clientDisconnected) {
+              // 没有 streamManager 时，直接发送给初始客户端
+              this.sendSSEEvent(res, 'message', json);
             }
 
             // 从 message_start 事件中提取实际使用的模型
@@ -396,6 +533,9 @@ class ClaudeStreamExecutor {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
 
+      // Cleanup temporary HOME directory (safe - uses flag)
+      cleanupSessionHome();
+
       // 完成流式任务（如果有 streamManager）
       if (streamId && this.streamManager) {
         this.streamManager.completeStream(streamId, {
@@ -450,6 +590,10 @@ class ClaudeStreamExecutor {
     // 进程错误处理
     child.on('error', (err) => {
       clearTimeout(timeout);
+
+      // Cleanup temporary HOME directory on error (safe - uses flag)
+      cleanupSessionHome();
+
       this.logger.error(`Failed to start Claude process`, {
         session_id: sessionId,
         error: err.message,

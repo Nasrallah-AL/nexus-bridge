@@ -5,8 +5,9 @@ const Validators = require('../utils/validators');
  * @param {Object} sessionManager - Session manager service
  * @param {Object} messageStore - Message store service (optional)
  * @param {Object} streamManager - Stream manager service (optional)
+ * @param {Object} providerRouter - Provider router for load balancing (optional)
  */
-function createSessionRoutes(sessionManager, messageStore = null, streamManager = null) {
+function createSessionRoutes(sessionManager, messageStore = null, streamManager = null, providerRouter = null) {
   const router = require('express').Router();
 
   /**
@@ -570,7 +571,8 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         sessionManager.sessionStore,
         sessionManager.statsStore,
         messageStore,  // 传递 messageStore
-        streamManager  // 传递 streamManager
+        streamManager,  // 传递 streamManager
+        providerRouter   // 传递 providerRouter for load balancing
       );
 
       await streamExecutor.executeStream({
@@ -582,6 +584,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         allowedTools: validation.value.allowed_tools,
         disallowedTools: validation.value.disallowed_tools,
         permissionMode: validation.value.permission_mode,
+        providerId: validation.value.provider_id,  // 传递 provider_id for forced provider selection
       }, res);
 
     } catch (error) {
