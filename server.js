@@ -241,14 +241,16 @@ async function main() {
   const StreamManager = require('./src/services/streamManager');
 
   const claudeExecutor = new ClaudeExecutor(config, sessionStore, statsStore, messageStore);
-  const sessionManager = new SessionManager(config, sessionStore, claudeExecutor, messageStore);
   const rateLimiter = new RateLimiter(config);
   const statisticsCollector = new StatisticsCollector(config, statsStore);
   const webhookNotifier = new WebhookNotifier(config);
 
-  // Initialize ProviderRouter before TaskQueue (TaskQueue needs providerRouter for health tracking)
+  // Initialize ProviderRouter early (needed by SessionManager and TaskQueue)
   const ProviderRouter = require('./src/services/providerRouter');
   const providerRouter = new ProviderRouter(config);
+
+  // SessionManager needs providerRouter for provider isolation
+  const sessionManager = new SessionManager(config, sessionStore, claudeExecutor, messageStore, providerRouter);
 
   const taskQueue = new TaskQueue(config, taskStore, claudeExecutor, webhookNotifier, providerRouter);
   const auditLogger = new AuditLogger(config, statsStore);

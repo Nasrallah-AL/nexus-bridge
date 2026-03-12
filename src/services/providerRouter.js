@@ -1,4 +1,5 @@
 const { DEFAULT_FAILURE_THRESHOLD } = require('../utils/providerEnv');
+const ProviderHomeManager = require('./providerHomeManager');
 
 /**
  * Provider Router for Load Balancing
@@ -105,8 +106,26 @@ class ProviderRouter {
       });
     }
 
+    // Initialize Provider Home Manager
+    this.homeManager = new ProviderHomeManager(config);
+
+    // Initialize HOME directories for all enabled providers
+    for (const p of this.providers) {
+      this.homeManager.initProviderHome(p.id);
+    }
+
     // Start periodic cleanup of stale bindings
     this._startCleanupTimer();
+  }
+
+  /**
+   * Get HOME directory path for a provider
+   *
+   * @param {string|null} providerId - Provider ID (null returns null for system HOME)
+   * @returns {string|null} Provider's HOME path, or null for system HOME
+   */
+  getProviderHome(providerId) {
+    return this.homeManager.getHomePath(providerId);
   }
 
   /**
@@ -141,6 +160,12 @@ class ProviderRouter {
       if (!this.providers.find(p => p.id === binding.providerId)) {
         this.bindings.delete(sessionId);
       }
+    }
+
+    // Update symlinks configuration and reinitialize HOME for new providers
+    this.homeManager.updateSymlinks(config.sessionHomeSymlinks);
+    for (const p of this.providers) {
+      this.homeManager.initProviderHome(p.id);
     }
 
     // Rebuild weighted slots

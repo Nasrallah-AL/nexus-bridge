@@ -110,6 +110,7 @@ function createMessagesRoute(claudeExecutor, config, sessionManager, providerRou
       permissionMode: validated.permissionMode,
       stream: validated.stream,
       provider,
+      providerRouter,
     });
 
     // Record result for load balancing health tracking

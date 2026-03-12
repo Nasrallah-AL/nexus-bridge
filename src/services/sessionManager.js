@@ -7,11 +7,12 @@ const Validators = require('../utils/validators');
  * 会话管理服务
  */
 class SessionManager {
-  constructor(config, sessionStore, claudeExecutor, messageStore = null) {
+  constructor(config, sessionStore, claudeExecutor, messageStore = null, providerRouter = null) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.claudeExecutor = claudeExecutor;
     this.messageStore = messageStore;
+    this.providerRouter = providerRouter;
     this.logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
   }
 
@@ -102,6 +103,7 @@ class SessionManager {
       disallowedTools: options.disallowedTools,
       permissionMode: options.permission_mode,
       stream: options.stream,
+      providerRouter: this.providerRouter,
     });
 
     return result;
