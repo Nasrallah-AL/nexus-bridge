@@ -277,7 +277,7 @@ class ClaudeExecutor {
    * 使用 spawn 执行命令
    */
   spawnCommand(projectPath, args, options = {}) {
-    const { onSpawn, provider } = options;
+    const { onSpawn, provider, sessionId } = options;
 
     return new Promise((resolve, reject) => {
       const env = { ...process.env };
