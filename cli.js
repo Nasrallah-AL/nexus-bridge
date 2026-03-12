@@ -836,6 +836,25 @@ async function visualConfigEditor() {
           ]
         }
       ]
+    },
+    {
+      name: '⚖️ 负载均衡',
+      categories: [
+        {
+          name: '负载均衡管理',
+          items: [
+            { key: 'loadbalance', label: '📊 负载均衡管理', type: 'loadbalance' },
+          ]
+        },
+        {
+          name: '策略配置',
+          items: [
+            { key: 'loadBalance.strategy', label: '均衡策略', type: 'string', options: ['round-robin', 'weighted'] },
+            { key: 'loadBalance.failover', label: '启用故障转移', type: 'boolean' },
+            { key: 'loadBalance.failureThreshold', label: '故障阈值', type: 'number' },
+          ]
+        }
+      ]
     }
   ];
 
@@ -970,6 +989,11 @@ async function visualConfigEditor() {
             default: true,
           },
         ]);
+      } else if (item.type === 'loadbalance') {
+        // 特殊处理：负载均衡管理
+        await loadBalanceMenu();
+        // 重新加载配置（可能已被修改）
+        config = loadConfig();
       } else if (item.type === 'boolean') {
         const { newValue } = await inquirer.prompt([
           {
@@ -2539,7 +2563,6 @@ async function mainMenu() {
         { name: '■ 停止服务', value: 'stop', disabled: !running ? '未运行' : false },
         { name: '● 查看状态', value: 'status' },
         { name: '💬 会话管理', value: 'sessions', disabled: !running ? '服务未运行' : false },
-        { name: '⚖️ 负载均衡', value: 'loadbalance', disabled: !running ? '服务未运行' : false },
         { name: '📊 查看统计', value: 'statistics', disabled: !running ? '服务未运行' : false },
         { name: '📋 任务列表', value: 'tasks', disabled: !running ? '服务未运行' : false },
         { name: '🏠 历史项目', value: 'projects', disabled: !running ? '服务未运行' : false },
@@ -2564,9 +2587,6 @@ async function mainMenu() {
       break;
     case 'sessions':
       await sessionManagementMenu();
-      break;
-    case 'loadbalance':
-      await loadBalanceMenu();
       break;
     case 'statistics':
       await statisticsMenu();

@@ -1,4 +1,5 @@
 const { spawn } = require('child_process');
+const os = require('os');
 const getLogger = require('../utils/logger');
 const { injectProviderEnv, getSafeProviderInfo, getEnvStatus } = require('../utils/providerEnv');
 
@@ -302,6 +303,57 @@ class ClaudeStreamExecutor {
       fs.mkdirSync(sessionHome, { recursive: true });
     }
     env.HOME = sessionHome;
+
+    // Create symlinks to global Claude config files for skills, plugins, etc.
+    // Link everything in ~/.claude/ except settings.json and settings.local.json
+    const realHome = os.homedir();
+    const globalClaudeDir = path.join(realHome, '.claude');
+    const sessionClaudeDir = path.join(sessionHome, '.claude');
+
+    // Files/directories to exclude from symlink (these may contain provider-specific settings)
+    const excludeFromSymlink = ['settings.json', 'settings.local.json'];
+
+    if (fs.existsSync(globalClaudeDir)) {
+      // Ensure session .claude directory exists
+      if (!fs.existsSync(sessionClaudeDir)) {
+        fs.mkdirSync(sessionClaudeDir, { recursive: true });
+      }
+
+      // Symlink all contents from global ~/.claude/ except excluded files
+      const claudeDirContents = fs.readdirSync(globalClaudeDir);
+      for (const item of claudeDirContents) {
+        if (excludeFromSymlink.includes(item)) {
+          continue; // Skip settings files
+        }
+
+        const globalItemPath = path.join(globalClaudeDir, item);
+        const sessionItemPath = path.join(sessionClaudeDir, item);
+
+        // Only create symlink if target doesn't exist
+        if (!fs.existsSync(sessionItemPath)) {
+          try {
+            const stat = fs.lstatSync(globalItemPath);
+            const linkType = stat.isDirectory() ? 'junction' : 'file';
+            fs.symlinkSync(globalItemPath, sessionItemPath, linkType);
+            this.logger.debug(`Created symlink for ~/.claude/${item}`, { sessionItemPath, globalItemPath });
+          } catch (linkErr) {
+            this.logger.warn(`Failed to create symlink for ~/.claude/${item}`, { error: linkErr.message });
+          }
+        }
+      }
+    }
+
+    // Symlink ~/.claude.json (for accessing global settings)
+    const globalClaudeJson = path.join(realHome, '.claude.json');
+    const sessionClaudeJsonLink = path.join(sessionHome, '.claude.json');
+    if (fs.existsSync(globalClaudeJson) && !fs.existsSync(sessionClaudeJsonLink)) {
+      try {
+        fs.symlinkSync(globalClaudeJson, sessionClaudeJsonLink, 'file');
+        this.logger.debug(`Created symlink for .claude.json`, { sessionClaudeJsonLink, globalClaudeJson });
+      } catch (linkErr) {
+        this.logger.warn(`Failed to create .claude.json symlink`, { error: linkErr.message });
+      }
+    }
 
     // Unset CLAUDECODE to allow running Claude CLI from within Claude Code
     // Without this, Claude CLI detects nested session and refuses to run
