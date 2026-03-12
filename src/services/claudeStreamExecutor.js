@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const getLogger = require('../utils/logger');
+const { injectProviderEnv, getSafeProviderInfo, getEnvStatus } = require('../utils/providerEnv');
 
 /**
  * Claude 流式执行器
@@ -302,38 +303,9 @@ class ClaudeStreamExecutor {
 
     // Inject Provider environment variables for load balancing
     if (provider) {
-      this.logger.info(`Injecting provider env vars for stream`, {
-        provider_id: provider.id,
-        provider_name: provider.name,
-        has_apiKey: !!provider.apiKey,
-        apiKey_prefix: provider.apiKey ? provider.apiKey.substring(0, 8) + '...' : null,
-        has_baseUrl: !!provider.baseUrl,
-        has_custom_env: !!(provider.env && Object.keys(provider.env).length > 0),
-      });
-
-      if (provider.apiKey) {
-        // Claude CLI uses ANTHROPIC_AUTH_TOKEN, not ANTHROPIC_API_KEY
-        // Set both for compatibility with different tools
-        env.ANTHROPIC_AUTH_TOKEN = provider.apiKey;
-        env.ANTHROPIC_API_KEY = provider.apiKey;
-      }
-      if (provider.baseUrl) {
-        env.ANTHROPIC_BASE_URL = provider.baseUrl;
-      }
-      // Inject additional custom environment variables from provider.env
-      if (provider.env && typeof provider.env === 'object') {
-        for (const [key, value] of Object.entries(provider.env)) {
-          if (value !== undefined && value !== null) {
-            env[key] = String(value);
-          }
-        }
-      }
-
-      this.logger.info(`Provider env vars injected for stream`, {
-        ANTHROPIC_AUTH_TOKEN_set: !!env.ANTHROPIC_AUTH_TOKEN,
-        ANTHROPIC_API_KEY_set: !!env.ANTHROPIC_API_KEY,
-        ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL,
-      });
+      this.logger.info(`Injecting provider env vars for stream`, getSafeProviderInfo(provider));
+      injectProviderEnv(env, provider);
+      this.logger.info(`Provider env vars injected for stream`, getEnvStatus(env));
     } else {
       this.logger.warn(`No provider selected for stream, using system env vars`);
     }
@@ -354,6 +326,28 @@ class ClaudeStreamExecutor {
     let actualModel = model;
     // 跟踪原始客户端是否已断开
     let clientDisconnected = false;
+    // Flag to prevent double cleanup of temp directory
+    let tmpHomeCleaned = false;
+
+    // Helper to cleanup temp directory safely
+    const cleanupTmpHome = () => {
+      if (tmpHomeCleaned) return;
+      tmpHomeCleaned = true;
+
+      try {
+        fs.rmSync(tmpHome, { recursive: true, force: true });
+        this.logger.debug(`Cleaned up temporary HOME directory for stream`, {
+          tmpHome,
+          session_id: sessionId,
+        });
+      } catch (cleanupErr) {
+        this.logger.warn(`Failed to cleanup temporary HOME directory for stream`, {
+          tmpHome,
+          session_id: sessionId,
+          error: cleanupErr.message,
+        });
+      }
+    };
 
     // 如果有 streamManager，注册流并添加客户端
     if (streamId && this.streamManager) {
@@ -467,20 +461,8 @@ class ClaudeStreamExecutor {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
 
-      // Cleanup temporary HOME directory
-      try {
-        fs.rmSync(tmpHome, { recursive: true, force: true });
-        this.logger.debug(`Cleaned up temporary HOME directory for stream`, {
-          tmpHome,
-          session_id: sessionId,
-        });
-      } catch (cleanupErr) {
-        this.logger.warn(`Failed to cleanup temporary HOME directory for stream`, {
-          tmpHome,
-          session_id: sessionId,
-          error: cleanupErr.message,
-        });
-      }
+      // Cleanup temporary HOME directory (safe - uses flag)
+      cleanupTmpHome();
 
       // 完成流式任务（如果有 streamManager）
       if (streamId && this.streamManager) {
@@ -537,12 +519,8 @@ class ClaudeStreamExecutor {
     child.on('error', (err) => {
       clearTimeout(timeout);
 
-      // Cleanup temporary HOME directory on error
-      try {
-        fs.rmSync(tmpHome, { recursive: true, force: true });
-      } catch (cleanupErr) {
-        // Ignore cleanup errors
-      }
+      // Cleanup temporary HOME directory on error (safe - uses flag)
+      cleanupTmpHome();
 
       this.logger.error(`Failed to start Claude process`, {
         session_id: sessionId,

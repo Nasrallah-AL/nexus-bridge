@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const getLogger = require('../utils/logger');
+const { injectProviderEnv, getSafeProviderInfo, getEnvStatus } = require('../utils/providerEnv');
 
 /**
  * Claude 执行器
@@ -305,39 +306,9 @@ class ClaudeExecutor {
 
       // Inject Provider environment variables for load balancing
       if (provider) {
-        this.logger.info(`Injecting provider env vars`, {
-          provider_id: provider.id,
-          provider_name: provider.name,
-          has_apiKey: !!provider.apiKey,
-          apiKey_prefix: provider.apiKey ? provider.apiKey.substring(0, 8) + '...' : null,
-          has_baseUrl: !!provider.baseUrl,
-          baseUrl: provider.baseUrl,
-          has_custom_env: !!(provider.env && Object.keys(provider.env).length > 0),
-        });
-
-        if (provider.apiKey) {
-          // Claude CLI uses ANTHROPIC_AUTH_TOKEN, not ANTHROPIC_API_KEY
-          // Set both for compatibility with different tools
-          env.ANTHROPIC_AUTH_TOKEN = provider.apiKey;
-          env.ANTHROPIC_API_KEY = provider.apiKey;
-        }
-        if (provider.baseUrl) {
-          env.ANTHROPIC_BASE_URL = provider.baseUrl;
-        }
-        // Inject additional custom environment variables from provider.env
-        if (provider.env && typeof provider.env === 'object') {
-          for (const [key, value] of Object.entries(provider.env)) {
-            if (value !== undefined && value !== null) {
-              env[key] = String(value);
-            }
-          }
-        }
-
-        this.logger.info(`Provider env vars injected`, {
-          ANTHROPIC_AUTH_TOKEN_set: !!env.ANTHROPIC_AUTH_TOKEN,
-          ANTHROPIC_API_KEY_set: !!env.ANTHROPIC_API_KEY,
-          ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL,
-        });
+        this.logger.info(`Injecting provider env vars`, getSafeProviderInfo(provider));
+        injectProviderEnv(env, provider);
+        this.logger.info(`Provider env vars injected`, getEnvStatus(env));
       } else {
         this.logger.warn(`No provider selected, using system env vars`);
       }
@@ -371,6 +342,23 @@ class ClaudeExecutor {
 
       let stdout = '';
       let stderr = '';
+      let tmpHomeCleaned = false; // Flag to prevent double cleanup
+
+      // Helper to cleanup temp directory safely
+      const cleanupTmpHome = () => {
+        if (tmpHomeCleaned) return;
+        tmpHomeCleaned = true;
+
+        try {
+          fs.rmSync(tmpHome, { recursive: true, force: true });
+          this.logger.debug(`Cleaned up temporary HOME directory`, { tmpHome });
+        } catch (cleanupErr) {
+          this.logger.warn(`Failed to cleanup temporary HOME directory`, {
+            tmpHome,
+            error: cleanupErr.message,
+          });
+        }
+      };
 
       child.stdout.on('data', (data) => {
         stdout += data.toString();
@@ -389,16 +377,8 @@ class ClaudeExecutor {
       child.on('close', (code) => {
         clearTimeout(timeout);
 
-        // Cleanup temporary HOME directory
-        try {
-          fs.rmSync(tmpHome, { recursive: true, force: true });
-          this.logger.debug(`Cleaned up temporary HOME directory`, { tmpHome });
-        } catch (cleanupErr) {
-          this.logger.warn(`Failed to cleanup temporary HOME directory`, {
-            tmpHome,
-            error: cleanupErr.message,
-          });
-        }
+        // Cleanup temporary HOME directory (safe - uses flag)
+        cleanupTmpHome();
 
         const output = stdout || stderr;
 
@@ -440,12 +420,8 @@ class ClaudeExecutor {
       child.on('error', (err) => {
         clearTimeout(timeout);
 
-        // Cleanup temporary HOME directory on error
-        try {
-          fs.rmSync(tmpHome, { recursive: true, force: true });
-        } catch (cleanupErr) {
-          // Ignore cleanup errors
-        }
+        // Cleanup temporary HOME directory on error (safe - uses flag)
+        cleanupTmpHome();
 
         // 根据错误类型提供更友好的错误信息
         let errorMessage = `Failed to start Claude CLI: ${err.message}`;

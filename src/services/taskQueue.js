@@ -7,12 +7,13 @@ const { EventEmitter } = require('events');
  * 简单内存任务队列
  */
 class TaskQueue extends EventEmitter {
-  constructor(config, taskStore, claudeExecutor, webhookNotifier = null) {
+  constructor(config, taskStore, claudeExecutor, webhookNotifier = null, providerRouter = null) {
     super();
     this.config = config;
     this.taskStore = taskStore;
     this.claudeExecutor = claudeExecutor;
     this.webhookNotifier = webhookNotifier;
+    this.providerRouter = providerRouter;
     this.logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
 
     // 队列配置
@@ -182,6 +183,13 @@ class TaskQueue extends EventEmitter {
       this.logger.warn('Task timeout', { task_id: taskId });
       await this.taskStore.markFailed(taskId, 'Task execution timeout');
       this.activeTasks.delete(taskId);
+
+      // Record failure for load balancing health tracking
+      const provider = metadata.provider;
+      if (provider && this.providerRouter) {
+        this.providerRouter.recordFailure(provider.id);
+      }
+
       this.emit('taskFailed', { taskId, reason: 'timeout' });
 
       // 发送 webhook 通知（使用自定义 URL）
@@ -231,6 +239,13 @@ class TaskQueue extends EventEmitter {
           result.result,
           result.cost_usd
         );
+
+        // Record success for load balancing health tracking
+        const provider = metadata.provider;
+        if (provider && this.providerRouter) {
+          this.providerRouter.recordSuccess(provider.id);
+        }
+
         this.logger.info('Task completed', {
           task_id: taskId,
           duration_ms: result.duration_ms,
@@ -254,6 +269,13 @@ class TaskQueue extends EventEmitter {
       } else {
         // 标记为失败
         await this.taskStore.markFailed(taskId, result.error);
+
+        // Record failure for load balancing health tracking
+        const provider = metadata.provider;
+        if (provider && this.providerRouter) {
+          this.providerRouter.recordFailure(provider.id);
+        }
+
         this.logger.error('Task failed', {
           task_id: taskId,
           error: result.error,
@@ -276,6 +298,13 @@ class TaskQueue extends EventEmitter {
 
       // 标记为失败
       await this.taskStore.markFailed(taskId, error.message);
+
+      // Record failure for load balancing health tracking
+      const provider = metadata.provider;
+      if (provider && this.providerRouter) {
+        this.providerRouter.recordFailure(provider.id);
+      }
+
       this.logger.error('Task error', {
         task_id: taskId,
         error: error.message,

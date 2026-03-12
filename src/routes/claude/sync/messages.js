@@ -94,16 +94,6 @@ function createMessagesRoute(claudeExecutor, config, sessionManager, providerRou
 
     // Select provider for load balancing
     const provider = providerRouter ? providerRouter.select(sessionId) : null;
-    if (provider) {
-      console.log(`[LoadBalance] Selected provider for session ${sessionId}:`, {
-        id: provider.id,
-        name: provider.name,
-        has_apiKey: !!provider.apiKey,
-        apiKey_prefix: provider.apiKey ? provider.apiKey.substring(0, 8) + '...' : null,
-      });
-    } else {
-      console.log(`[LoadBalance] No provider selected for session ${sessionId}`);
-    }
 
     // 同步执行
     const result = await claudeExecutor.execute({

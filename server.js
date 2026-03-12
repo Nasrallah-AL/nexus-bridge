@@ -244,13 +244,14 @@ async function main() {
   const rateLimiter = new RateLimiter(config);
   const statisticsCollector = new StatisticsCollector(config, statsStore);
   const webhookNotifier = new WebhookNotifier(config);
-  const taskQueue = new TaskQueue(config, taskStore, claudeExecutor, webhookNotifier);
-  const auditLogger = new AuditLogger(config, statsStore);
-  const streamManager = new StreamManager(config);
 
-  // Initialize ProviderRouter
+  // Initialize ProviderRouter before TaskQueue (TaskQueue needs providerRouter for health tracking)
   const ProviderRouter = require('./src/services/providerRouter');
   const providerRouter = new ProviderRouter(config);
+
+  const taskQueue = new TaskQueue(config, taskStore, claudeExecutor, webhookNotifier, providerRouter);
+  const auditLogger = new AuditLogger(config, statsStore);
+  const streamManager = new StreamManager(config);
 
   // 加载路由
   const createHealthRoute = require('./src/routes/health');
@@ -378,9 +379,8 @@ async function main() {
       if (JSON.stringify(newConfig.providers) !== JSON.stringify(config.providers) ||
           JSON.stringify(newConfig.loadBalance) !== JSON.stringify(config.loadBalance)) {
         configChanges.push('providers/loadBalance configuration changed');
-        // Re-initialize providerRouter
-        const NewProviderRouter = require('./src/services/providerRouter');
-        Object.assign(providerRouter, new NewProviderRouter(newConfig));
+        // Use updateConfig method for proper hot reload
+        providerRouter.updateConfig(newConfig);
       }
 
       // 更新配置对象（保留引用）
