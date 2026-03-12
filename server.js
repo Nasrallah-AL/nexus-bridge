@@ -14,6 +14,7 @@ const configPath = path.join(configDir, 'config.json');
 const defaultConfig = {
   port: 5546,
   host: '0.0.0.0',
+  trustProxy: 1, // Trust first reverse proxy (number for security, not boolean)
   claudePath: path.join(process.env.HOME || os.homedir(), '.nvm', 'versions', 'node', 'v22.21.0', 'bin', 'claude'),
   nvmBin: path.join(process.env.HOME || os.homedir(), '.nvm', 'versions', 'node', 'v22.21.0', 'bin'),
   workspacePath: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'workspace'),
@@ -267,6 +268,11 @@ async function main() {
   const app = express();
   const PORT = process.env.PORT || config.port;
   const HOST = process.env.HOST || config.host;
+
+  // Trust proxy - required when behind reverse proxy (nginx, etc.)
+  // This allows express-rate-limit to correctly identify client IP from X-Forwarded-For
+  // Use number (e.g., 1 = trust first proxy) instead of boolean for security
+  app.set('trust proxy', config.trustProxy ?? 1);
 
   // 中间件
   app.use(express.json({ limit: '10mb' })); // Prevent DoS attacks with large payloads

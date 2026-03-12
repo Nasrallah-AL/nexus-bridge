@@ -230,7 +230,8 @@ describe('ClaudeStreamExecutor', () => {
         'session-123',
         'claude-3-sonnet-20240229',
         'stream_abc123',
-        'streaming_msg_123'
+        'streaming_msg_123',
+        null  // provider parameter
       );
     });
 
@@ -266,7 +267,8 @@ describe('ClaudeStreamExecutor', () => {
         'session-123',
         'claude-3-sonnet-20240229',
         null,
-        null
+        null,
+        null  // provider parameter
       );
     });
   });

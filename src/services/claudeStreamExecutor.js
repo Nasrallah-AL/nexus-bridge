@@ -285,17 +285,30 @@ class ClaudeStreamExecutor {
       env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
     }
 
-    // Create temporary HOME directory to isolate from local ~/.claude/settings.json
+    // Create session-specific HOME directory to isolate from local ~/.claude/settings.json
     // This ensures provider environment variables take precedence
-    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-stream-'));
-    env.HOME = tmpHome;
+    // Use session_id for persistent conversation data
+    // Use project data directory for session storage
+    const dataDir = this.config.dataDir || path.join(process.cwd(), 'data');
+    const homeBase = path.join(dataDir, 'sessions');
+    // Ensure base directory exists
+    if (!fs.existsSync(homeBase)) {
+      fs.mkdirSync(homeBase, { recursive: true });
+    }
+    // Use session_id for persistent session data
+    const homeName = sessionId ? `session-${sessionId}` : fs.mkdtempSync(path.join(homeBase, 'temp-'));
+    const sessionHome = path.join(homeBase, homeName);
+    if (!fs.existsSync(sessionHome)) {
+      fs.mkdirSync(sessionHome, { recursive: true });
+    }
+    env.HOME = sessionHome;
 
     // Unset CLAUDECODE to allow running Claude CLI from within Claude Code
     // Without this, Claude CLI detects nested session and refuses to run
     delete env.CLAUDECODE;
 
-    this.logger.info(`Created temporary HOME directory for stream`, {
-      tmpHome,
+    this.logger.info(`Using session HOME directory for stream`, {
+      sessionHome,
       CLAUDECODE_unset: true,
       session_id: sessionId,
       stream_id: streamId,
@@ -326,24 +339,33 @@ class ClaudeStreamExecutor {
     let actualModel = model;
     // 跟踪原始客户端是否已断开
     let clientDisconnected = false;
-    // Flag to prevent double cleanup of temp directory
-    let tmpHomeCleaned = false;
+    // Flag to prevent double cleanup of session directory
+    let sessionHomeCleaned = false;
 
-    // Helper to cleanup temp directory safely
-    const cleanupTmpHome = () => {
-      if (tmpHomeCleaned) return;
-      tmpHomeCleaned = true;
+    // Helper to cleanup session directory safely
+    // Only cleanup if it's a temporary directory (no sessionId)
+    const cleanupSessionHome = () => {
+      if (sessionHomeCleaned) return;
+      sessionHomeCleaned = true;
 
-      try {
-        fs.rmSync(tmpHome, { recursive: true, force: true });
-        this.logger.debug(`Cleaned up temporary HOME directory for stream`, {
-          tmpHome,
+      // Don't cleanup session directories - they need to persist for --resume
+      if (sessionId) {
+        this.logger.debug(`Keeping session HOME directory for future resume`, {
+          sessionHome,
           session_id: sessionId,
+        });
+        return;
+      }
+
+      // Only cleanup temporary directories
+      try {
+        fs.rmSync(sessionHome, { recursive: true, force: true });
+        this.logger.debug(`Cleaned up temporary HOME directory for stream`, {
+          sessionHome,
         });
       } catch (cleanupErr) {
         this.logger.warn(`Failed to cleanup temporary HOME directory for stream`, {
-          tmpHome,
-          session_id: sessionId,
+          sessionHome,
           error: cleanupErr.message,
         });
       }
@@ -384,14 +406,12 @@ class ClaudeStreamExecutor {
           try {
             const json = JSON.parse(line);
 
-            // 转发所有事件到客户端（如果客户端还连接）
-            if (!clientDisconnected) {
-              this.sendSSEEvent(res, 'message', json);
-            }
-
-            // 如果有 streamManager，广播到所有客户端
+            // 如果有 streamManager，广播到所有客户端（包括初始客户端）
             if (streamId && this.streamManager) {
               this.streamManager.broadcast(streamId, 'message', json);
+            } else if (!clientDisconnected) {
+              // 没有 streamManager 时，直接发送给初始客户端
+              this.sendSSEEvent(res, 'message', json);
             }
 
             // 从 message_start 事件中提取实际使用的模型
@@ -462,7 +482,7 @@ class ClaudeStreamExecutor {
       const duration = Date.now() - startTime;
 
       // Cleanup temporary HOME directory (safe - uses flag)
-      cleanupTmpHome();
+      cleanupSessionHome();
 
       // 完成流式任务（如果有 streamManager）
       if (streamId && this.streamManager) {
@@ -520,7 +540,7 @@ class ClaudeStreamExecutor {
       clearTimeout(timeout);
 
       // Cleanup temporary HOME directory on error (safe - uses flag)
-      cleanupTmpHome();
+      cleanupSessionHome();
 
       this.logger.error(`Failed to start Claude process`, {
         session_id: sessionId,

@@ -287,20 +287,33 @@ class ClaudeExecutor {
         env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
       }
 
-      // Create temporary HOME directory to isolate from local ~/.claude/settings.json
+      // Create session-specific HOME directory to isolate from local ~/.claude/settings.json
       // This ensures provider environment variables take precedence
+      // Use session_id for persistent conversation data
       const fs = require('fs');
-      const os = require('os');
-      const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-exec-'));
-      env.HOME = tmpHome;
+      // Use project data directory for session storage
+      const dataDir = this.config.dataDir || path.join(process.cwd(), 'data');
+      const homeBase = path.join(dataDir, 'sessions');
+      // Ensure base directory exists
+      if (!fs.existsSync(homeBase)) {
+        fs.mkdirSync(homeBase, { recursive: true });
+      }
+      // Use session_id if available, otherwise use random temp dir
+      const homeName = sessionId ? `session-${sessionId}` : fs.mkdtempSync(path.join(homeBase, 'temp-'));
+      const sessionHome = path.join(homeBase, homeName);
+      if (!fs.existsSync(sessionHome)) {
+        fs.mkdirSync(sessionHome, { recursive: true });
+      }
+      env.HOME = sessionHome;
 
       // Unset CLAUDECODE to allow running Claude CLI from within Claude Code
       // Without this, Claude CLI detects nested session and refuses to run
       delete env.CLAUDECODE;
 
-      this.logger.info(`Created temporary HOME directory`, {
-        tmpHome,
+      this.logger.info(`Using session HOME directory`, {
+        sessionHome,
         CLAUDECODE_unset: true,
+        session_id: sessionId,
         reason: 'Isolate from local ~/.claude/settings.json and allow nested execution',
       });
 
@@ -318,8 +331,10 @@ class ClaudeExecutor {
         try {
           fs.mkdirSync(projectPath, { recursive: true });
         } catch (mkdirErr) {
-          // Clean up temp HOME directory on error
-          try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch (e) {}
+          // Clean up temp HOME directory on error (only for non-session temp dirs)
+          if (!sessionId) {
+            try { fs.rmSync(sessionHome, { recursive: true, force: true }); } catch (e) {}
+          }
           const error = new Error(`Failed to create project directory: ${mkdirErr.message}`);
           error.details = {
             projectPath,
@@ -342,19 +357,27 @@ class ClaudeExecutor {
 
       let stdout = '';
       let stderr = '';
-      let tmpHomeCleaned = false; // Flag to prevent double cleanup
+      let sessionHomeCleaned = false; // Flag to prevent double cleanup
 
       // Helper to cleanup temp directory safely
-      const cleanupTmpHome = () => {
-        if (tmpHomeCleaned) return;
-        tmpHomeCleaned = true;
+      // Only cleanup if it's a temporary directory (no sessionId)
+      const cleanupSessionHome = () => {
+        if (sessionHomeCleaned) return;
+        sessionHomeCleaned = true;
 
+        // Don't cleanup session directories - they need to persist for --resume
+        if (sessionId) {
+          this.logger.debug(`Keeping session HOME directory for future resume`, { sessionHome });
+          return;
+        }
+
+        // Only cleanup temporary directories
         try {
-          fs.rmSync(tmpHome, { recursive: true, force: true });
-          this.logger.debug(`Cleaned up temporary HOME directory`, { tmpHome });
+          fs.rmSync(sessionHome, { recursive: true, force: true });
+          this.logger.debug(`Cleaned up temporary HOME directory`, { sessionHome });
         } catch (cleanupErr) {
           this.logger.warn(`Failed to cleanup temporary HOME directory`, {
-            tmpHome,
+            sessionHome,
             error: cleanupErr.message,
           });
         }
@@ -378,7 +401,7 @@ class ClaudeExecutor {
         clearTimeout(timeout);
 
         // Cleanup temporary HOME directory (safe - uses flag)
-        cleanupTmpHome();
+        cleanupSessionHome();
 
         const output = stdout || stderr;
 
@@ -421,7 +444,7 @@ class ClaudeExecutor {
         clearTimeout(timeout);
 
         // Cleanup temporary HOME directory on error (safe - uses flag)
-        cleanupTmpHome();
+        cleanupSessionHome();
 
         // 根据错误类型提供更友好的错误信息
         let errorMessage = `Failed to start Claude CLI: ${err.message}`;
