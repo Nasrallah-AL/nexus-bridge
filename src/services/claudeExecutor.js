@@ -37,8 +37,13 @@ class ClaudeExecutor {
       stream = false,
     } = options;
 
-    // Get provider HOME path for environment isolation
-    const providerHome = providerRouter ? providerRouter.getProviderHome(provider?.id || null) : null;
+    // Setup provider settings symlink in project directory
+    if (providerRouter && provider) {
+      const settingsManager = providerRouter.getSettingsManager();
+      if (settingsManager) {
+        settingsManager.setupProjectSymlink(projectPath, provider.id);
+      }
+    }
 
     // 检查会话是否存在以及是否已被使用
     let sessionExists = false;
@@ -132,7 +137,6 @@ class ClaudeExecutor {
         result = await this.spawnCommand(projectPath, args, {
           onSpawn: options.onSpawn,
           provider,
-          providerHome,
         });
       } catch (spawnErr) {
         // 如果是 "Session ID already in use" 错误，尝试使用 --resume 重试
@@ -150,7 +154,7 @@ class ClaudeExecutor {
             args: retryArgs.join(' ').substring(0, 200) + '...',
           });
 
-          result = await this.spawnCommand(projectPath, retryArgs, { provider, providerHome });
+          result = await this.spawnCommand(projectPath, retryArgs, { provider });
           this.logger.info(`Successfully resumed session`, { session_id: sessionId });
         } else {
           // 其他错误，直接抛出
@@ -281,30 +285,22 @@ class ClaudeExecutor {
    * 使用 spawn 执行命令
    */
   spawnCommand(projectPath, args, options = {}) {
-    const { onSpawn, provider, providerHome } = options;
+    const { onSpawn, provider } = options;
 
     return new Promise((resolve, reject) => {
       const env = { ...process.env };
 
-      // 如果配置了 nodeBinDir，添加到 PATH 中
+      // 如果配置了 nodeBinDir， 添加到 PATH 中
       // 这样可以确保使用正确的 Node.js 版本（适用于 NVM、nvm-windows 等场景）
       if (this.config.nodeBinDir) {
         env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
       }
 
-      // Set HOME directory based on provider
-      // - If providerHome is provided, use it (isolated provider environment)
-      // - Otherwise, use system HOME (no isolation)
-      if (providerHome) {
-        env.HOME = providerHome;
-        this.logger.info(`Using provider HOME directory`, {
-          providerHome,
-          provider_id: provider?.id,
-        });
-      } else {
-        // Use system HOME (no isolation)
-        this.logger.info(`Using system HOME directory (no provider isolation)`);
-      }
+      // Provider settings are now handled via symlink in project directory
+      // No need to modify HOME environment variable
+      this.logger.debug(`Using standard environment`, {
+        provider_id: provider?.id || 'none',
+      });
 
       // Unset CLAUDECODE to allow running Claude CLI from within Claude Code
       // Without this, Claude CLI detects nested session and refuses to run
