@@ -109,6 +109,9 @@ class ProviderRouter {
     // Initialize Provider Settings Manager
     this.settingsManager = new ProviderSettingsManager(config);
 
+    // Initialize settings files for all configured providers
+    this.settingsManager.initializeFromConfig(this.providers);
+
     // Start periodic cleanup of stale bindings
     this._startCleanupTimer();
   }

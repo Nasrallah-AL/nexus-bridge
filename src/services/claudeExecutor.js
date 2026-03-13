@@ -88,9 +88,30 @@ class ClaudeExecutor {
     }
 
     const startTime = Date.now();
+    const timings = {}; // 记录各步骤耗时
+
+    // ========== 步骤1：参数验证 ==========
+    const step1Start = Date.now();
+    this.logger.info(`[Step 1/5] Starting Claude execution`, {
+      session_id: sessionId,
+      provider_id: provider?.id || 'none',
+      provider_name: provider?.name || 'none',
+      model: model,
+      project_path: projectPath,
+      prompt_length: prompt?.length || 0,
+      prompt_preview: prompt?.substring(0, 100) || '',
+      has_system_prompt: !!systemPrompt,
+      max_budget_usd: maxBudgetUsd,
+      permission_mode: permissionMode,
+      has_allowed_tools: !!allowedTools,
+      has_disallowed_tools: !!disallowedTools,
+      agent: agent || 'none',
+    });
+    timings.step1_validation = Date.now() - step1Start;
 
     try {
-      // 构建命令参数
+      // ========== 步骤2：构建命令参数 ==========
+      const step2Start = Date.now();
       const args = this.buildCommandArgs({
         prompt,
         model,
@@ -104,32 +125,41 @@ class ClaudeExecutor {
         mcpConfig: options.mcpConfig,
         permissionMode,
       });
+      timings.step2_build_args = Date.now() - step2Start;
 
-      this.logger.info(`Executing Claude command`, {
-        prompt: prompt.substring(0, 50) + '...',
-        project_path: projectPath,
-        model: model,
-        session_id: sessionId,
+      this.logger.info(`[Step 2/5] Command args built`, {
+        args_count: args.length,
+        args_full: args.join(' '),
         claude_path: this.config.claudePath,
         node_bin_dir: this.config.nodeBinDir || 'not configured',
-        args_preview: args.join(' ').substring(0, 200) + '...',
+        build_time_ms: timings.step2_build_args,
       });
 
-      // 确保项目目录存在
+      // ========== 步骤3：准备项目目录 ==========
+      const step3Start = Date.now();
       const fs = require('fs');
       if (!fs.existsSync(projectPath)) {
-        this.logger.info(`Creating project directory`, { project_path: projectPath });
+        this.logger.info(`[Step 3/5] Creating project directory`, { project_path: projectPath });
         try {
           fs.mkdirSync(projectPath, { recursive: true });
-          this.logger.info(`Project directory created`, { project_path: projectPath });
+          this.logger.info(`[Step 3/5] Project directory created`, { project_path: projectPath });
         } catch (mkdirErr) {
-          // 如果创建失败，记录错误并继续执行
-          this.logger.warn(`Failed to create project directory`, {
+          this.logger.warn(`[Step 3/5] Failed to create project directory`, {
             project_path: projectPath,
             error: mkdirErr.message
           });
         }
       }
+      timings.step3_prepare_dir = Date.now() - step3Start;
+
+      // ========== 步骤4：执行 Claude 命令 ==========
+      const step4Start = Date.now();
+      this.logger.info(`[Step 4/5] Spawning Claude process`, {
+        claude_path: this.config.claudePath,
+        cwd: projectPath,
+        provider_id: provider?.id || 'none',
+        env_injection: provider ? 'yes' : 'no',
+      });
 
       // 使用 spawn 异步执行
       let result;
@@ -138,37 +168,73 @@ class ClaudeExecutor {
           onSpawn: options.onSpawn,
           provider,
         });
+        timings.step4_spawn = Date.now() - step4Start;
+
+        this.logger.info(`[Step 4/5] Claude process completed`, {
+          spawn_time_ms: timings.step4_spawn,
+          has_result: !!result,
+          has_total_cost: !!result?.total_cost_usd,
+        });
       } catch (spawnErr) {
+        timings.step4_spawn = Date.now() - step4Start;
         // 如果是 "Session ID already in use" 错误，尝试使用 --resume 重试
         if (sessionId && spawnErr.message && spawnErr.message.includes('Session ID') && spawnErr.message.includes('already in use')) {
-          this.logger.warn(`Session already in use, retrying with --resume`, {
+          this.logger.warn(`[Step 4/5] Session already in use, retrying with --resume`, {
             session_id: sessionId,
-            error: spawnErr.message
+            error: spawnErr.message,
+            spawn_time_ms: timings.step4_spawn,
           });
 
           // 移除 --session-id 或 --resume，添加 --resume
           const retryArgs = args.filter(arg => arg !== '--session-id' && arg !== '--resume' && arg !== sessionId);
           retryArgs.push('--resume', sessionId);
 
-          this.logger.info(`Retrying with --resume`, {
-            args: retryArgs.join(' ').substring(0, 200) + '...',
+          const retryStart = Date.now();
+          this.logger.info(`[Step 4/5] Retrying with --resume`, {
+            args_preview: retryArgs.join(' ').substring(0, 200) + '...',
           });
 
           result = await this.spawnCommand(projectPath, retryArgs, { provider });
-          this.logger.info(`Successfully resumed session`, { session_id: sessionId });
+          timings.step4_retry = Date.now() - retryStart;
+
+          this.logger.info(`[Step 4/5] Retry succeeded`, {
+            session_id: sessionId,
+            retry_time_ms: timings.step4_retry,
+          });
         } else {
           // 其他错误，直接抛出
+          this.logger.error(`[Step 4/5] Claude process failed`, {
+            error: spawnErr.message,
+            spawn_time_ms: timings.step4_spawn,
+          });
           throw spawnErr;
         }
       }
 
+      // ========== 步骤5：处理结果 ==========
+      const step5Start = Date.now();
       const duration = Date.now() - startTime;
       const costUsd = result.total_cost_usd || 0;
 
-      this.logger.info(`Claude command succeeded`, {
+      this.logger.info(`[Step 5/5] Processing execution result`, {
         duration_ms: duration,
         cost_usd: costUsd,
         session_id: result.session_id,
+        has_usage: !!result.usage,
+        usage: result.usage || null,
+      });
+      timings.step5_process = Date.now() - step5Start;
+
+      // ========== 执行完成汇总 ==========
+      this.logger.info(`========== Execution Summary ==========`, {
+        status: 'SUCCESS',
+        total_duration_ms: duration,
+        step_timings_ms: timings,
+        cost_usd: costUsd,
+        session_id: result.session_id,
+        provider_id: provider?.id || 'none',
+        model: model,
+        prompt_length: prompt?.length || 0,
       });
 
       // 预算控制：检查执行后是否超预算

@@ -153,27 +153,69 @@ class ClaudeStreamExecutor {
       providerId = null,  // Optional: force specific provider
     } = options;
 
+    const startTime = Date.now();
+    const timings = {}; // 记录各步骤耗时
+
+    // ========== 步骤1：参数验证和Provider选择 ==========
+    const step1Start = Date.now();
+    this.logger.info(`[Step 1/5] Starting stream execution`, {
+      session_id: sessionId,
+      model: model,
+      project_path: projectPath,
+      prompt_length: prompt?.length || 0,
+      prompt_preview: prompt?.substring(0, 100) || '',
+      has_system_prompt: !!systemPrompt,
+      max_budget_usd: maxBudgetUsd,
+      permission_mode: permissionMode,
+      provider_id_forced: providerId || 'none',
+    });
+
     // Select provider for load balancing
     let provider = null;
     if (this.providerRouter) {
       provider = this.providerRouter.select(sessionId, providerId);
-      this.logger.info(`Selected provider for stream`, {
+      this.logger.info(`[Step 1/5] Provider selected`, {
         session_id: sessionId,
         provider_id: provider?.id || 'none',
+        provider_name: provider?.name || 'none',
         forced: !!providerId,
       });
     }
+    timings.step1_provider_select = Date.now() - step1Start;
 
-    const startTime = Date.now();
-
-    // 检查会话是否存在
+    // ========== 步骤2：检查会话状态和预算 ==========
+    const step2Start = Date.now();
     let sessionExists = false;
     if (sessionId && this.sessionStore) {
       try {
         const session = await this.sessionStore.get(sessionId);
         sessionExists = !!(session && session.messages_count > 0);
+        this.logger.info(`[Step 2/5] Session check completed`, {
+          session_id: sessionId,
+          exists: !!session,
+          messages_count: session?.messages_count || 0,
+          will_resume: sessionExists,
+          current_cost_usd: session?.total_cost_usd || 0,
+        });
       } catch (err) {
-        this.logger.debug(`Session check failed`, { session_id: sessionId, error: err.message });
+        this.logger.debug(`[Step 2/5] Session check failed`, { session_id: sessionId, error: err.message });
+      }
+    }
+    timings.step2_session_check = Date.now() - step2Start;
+
+    // ========== 步骤3：设置Provider配置（symlink方式） ==========
+    const step3Start = Date.now();
+
+    // Setup provider settings symlink in project directory
+    if (this.providerRouter && provider) {
+      const settingsManager = this.providerRouter.getSettingsManager();
+      if (settingsManager) {
+        const symlinkResult = settingsManager.setupProjectSymlink(projectPath, provider.id);
+        this.logger.info(`[Step 3/5] Provider settings symlink setup`, {
+          provider_id: provider.id,
+          project_path: projectPath,
+          symlink_created: symlinkResult,
+        });
       }
     }
 
@@ -188,13 +230,13 @@ class ClaudeStreamExecutor {
           model,
         });
         streamingMessageId = streamingMessage.id;
-        this.logger.debug(`Created streaming message`, {
+        this.logger.debug(`[Step 3/5] Created streaming message`, {
           session_id: sessionId,
           stream_id: streamId,
           message_id: streamingMessageId,
         });
       } catch (err) {
-        this.logger.warn(`Failed to create streaming message`, {
+        this.logger.warn(`[Step 3/5] Failed to create streaming message`, {
           session_id: sessionId,
           error: err.message,
         });
@@ -203,6 +245,7 @@ class ClaudeStreamExecutor {
         streamingMessageId = null;
       }
     }
+    timings.step3_setup = Date.now() - step3Start;
 
     // 设置 SSE 响应头
     this.setupSSEResponse(res, sessionId, streamId);
@@ -393,6 +436,8 @@ class ClaudeStreamExecutor {
     let clientDisconnected = false;
     // Flag to prevent double cleanup of session directory
     let sessionHomeCleaned = false;
+    // 收集 stderr 输出用于错误诊断
+    let stderrOutput = '';
 
     // Helper to cleanup session directory safely
     // Only cleanup if it's a temporary directory (no sessionId)
@@ -515,9 +560,11 @@ class ClaudeStreamExecutor {
 
     // 处理 stderr
     child.stderr.on('data', (data) => {
+      const stderrText = data.toString();
+      stderrOutput += stderrText;
       this.logger.warn(`Claude stderr`, {
         session_id: sessionId,
-        stderr: data.toString().substring(0, 500),
+        stderr: stderrText.substring(0, 500),
       });
     });
 
@@ -562,8 +609,17 @@ class ClaudeStreamExecutor {
       }
 
       if (code !== 0) {
-        this.logger.error(`Claude process exited with code ${code}`, { session_id: sessionId });
-        this.sendSSEError(res, `Process exited with code ${code}`);
+        this.logger.error(`Claude process exited with code ${code}`, {
+          session_id: sessionId,
+          stderr: stderrOutput.substring(0, 2000),
+          args: args.join(' ').substring(0, 500),
+          claude_path: this.config.claudePath,
+          project_path: projectPath,
+        });
+        this.sendSSEError(res, `Process exited with code ${code}`, {
+          stderr: stderrOutput.substring(0, 1000) || null,
+          args: args.join(' ').substring(0, 300),
+        });
         return;
       }
 

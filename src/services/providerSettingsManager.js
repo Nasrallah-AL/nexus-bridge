@@ -7,31 +7,30 @@ const getLogger = require('../utils/logger');
  * Provider Settings Manager
  *
  * Manages provider-specific Claude settings files.
- * When a session is created, it creates a symlink in the project's .claude/ directory
- * pointing to the provider's settings.json file.
+ * Each provider's settings are stored as a separate JSON file in the provider directory.
+ * When a session is executed, the corresponding settings file is symlinked to the project's .claude/ directory.
  *
  * Directory structure:
  * ~/.claude-code-server/provider/
- * ├── config-settings-provider-1.json
- * ├── config-settings-provider-2.json
+ * ├── max.json          <- Provider "max" settings (Claude settings.json format)
+ * ├── zwl.json          <- Provider "zwl" settings
  * └── ...
  *
  * Project directory (at runtime):
  * /path/to/project/
  * └── .claude/
- *     └── settings.json -> ~/.claude-code-server/provider/config-settings-provider-1.json
+ *     └── settings.json -> ~/.claude-code-server/provider/max.json
  */
 class ProviderSettingsManager {
   /**
    * Create a new ProviderSettingsManager instance
    *
    * @param {Object} config - Configuration object
-   * @param {string} config.dataDir - Base data directory
    */
   constructor(config) {
     this.config = config;
-    this.dataDir = config.dataDir || path.join(os.homedir(), '.claude-code-server', 'data');
-    this.providerDir = path.join(path.dirname(this.dataDir), 'provider');
+    this.baseDir = path.join(os.homedir(), '.claude-code-server');
+    this.providerDir = path.join(this.baseDir, 'provider');
     this.logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
 
     // Ensure provider directory exists
@@ -45,7 +44,7 @@ class ProviderSettingsManager {
    * @returns {string} Path to provider's settings file
    */
   getSettingsPath(providerId) {
-    return path.join(this.providerDir, `config-settings-${providerId}.json`);
+    return path.join(this.providerDir, `${providerId}.json`);
   }
 
   /**
@@ -61,9 +60,10 @@ class ProviderSettingsManager {
 
   /**
    * Save settings for a provider
+   * Creates or updates the provider's settings file
    *
    * @param {string} providerId - Provider identifier
-   * @param {Object} settings - Settings object to save
+   * @param {Object} settings - Settings object (Claude settings.json format)
    * @returns {string} Path to saved settings file
    */
   saveSettings(providerId, settings) {
@@ -140,6 +140,28 @@ class ProviderSettingsManager {
   }
 
   /**
+   * Create default settings for a provider based on provider config
+   * This creates a Claude settings.json compatible file
+   *
+   * @param {Object} providerConfig - Provider configuration from config.json
+   * @returns {string} Path to created settings file
+   */
+  createDefaultSettings(providerConfig) {
+    const { id, apiKey, baseUrl, env = {} } = providerConfig;
+
+    // Create Claude settings.json format
+    const settings = {
+      env: {
+        ANTHROPIC_API_KEY: apiKey,
+        ...(baseUrl ? { ANTHROPIC_BASE_URL: baseUrl } : {}),
+        ...env,
+      },
+    };
+
+    return this.saveSettings(id, settings);
+  }
+
+  /**
    * Setup symlink in project directory for a provider
    * Creates .claude/settings.json symlink pointing to provider's settings file
    *
@@ -172,11 +194,12 @@ class ProviderSettingsManager {
 
     try {
       // Remove existing symlink or file if it exists
-      if (fs.existsSync(settingsLinkPath) || fs.lstatSync(settingsLinkPath).isSymbolicLink()) {
+      // Note: lstatSync throws if file doesn't exist, so only call it if existsSync is true
+      if (fs.existsSync(settingsLinkPath)) {
         fs.unlinkSync(settingsLinkPath);
       }
 
-      // Create symlink (relative path for portability)
+      // Create symlink
       fs.symlinkSync(providerSettingsPath, settingsLinkPath, 'file');
 
       this.logger.info('Created provider settings symlink', {
@@ -208,7 +231,7 @@ class ProviderSettingsManager {
     const settingsLinkPath = path.join(claudeDir, 'settings.json');
 
     try {
-      if (fs.existsSync(settingsLinkPath) || fs.lstatSync(settingsLinkPath).isSymbolicLink()) {
+      if (fs.existsSync(settingsLinkPath)) {
         fs.unlinkSync(settingsLinkPath);
         this.logger.debug('Removed provider settings symlink', {
           project_path: projectPath,
@@ -238,12 +261,11 @@ class ProviderSettingsManager {
     }
 
     const files = fs.readdirSync(this.providerDir);
-    const prefix = 'config-settings-';
     const suffix = '.json';
 
     for (const file of files) {
-      if (file.startsWith(prefix) && file.endsWith(suffix)) {
-        const providerId = file.substring(prefix.length, file.length - suffix.length);
+      if (file.endsWith(suffix)) {
+        const providerId = file.substring(0, file.length - suffix.length);
         results.push({
           providerId,
           path: path.join(this.providerDir, file),
@@ -252,6 +274,30 @@ class ProviderSettingsManager {
     }
 
     return results;
+  }
+
+  /**
+   * Initialize settings for all providers from config.json
+   * Creates default settings files for providers that don't have one
+   *
+   * @param {Array<Object>} providers - Array of provider configurations
+   */
+  initializeFromConfig(providers = []) {
+    for (const provider of providers) {
+      if (!this.hasSettings(provider.id)) {
+        try {
+          this.createDefaultSettings(provider);
+          this.logger.info('Created default settings for provider', {
+            provider_id: provider.id,
+          });
+        } catch (err) {
+          this.logger.warn('Failed to create default settings for provider', {
+            provider_id: provider.id,
+            error: err.message,
+          });
+        }
+      }
+    }
   }
 
   /**
