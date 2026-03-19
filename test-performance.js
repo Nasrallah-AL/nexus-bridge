@@ -1,10 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 
-// 模拟会话数据生成
+// Generate mock session data
 function generateSessions(count) {
   const sessions = [];
-  const projectCount = Math.max(10, Math.floor(count / 5)); // 每5个会话大约1个项目
+  const projectCount = Math.max(10, Math.floor(count / 5)); // Roughly one project for every five sessions
 
   for (let i = 0; i < count; i++) {
     const projectId = Math.floor(Math.random() * projectCount);
@@ -22,7 +22,7 @@ function generateSessions(count) {
   return sessions;
 }
 
-// 聚合项目统计（与实际实现相同）
+// Aggregate project statistics (same as the real implementation)
 function aggregateProjects(sessions) {
   const projectMap = new Map();
 
@@ -57,34 +57,34 @@ function aggregateProjects(sessions) {
   return Array.from(projectMap.values());
 }
 
-// 性能测试
+// Performance test
 async function runPerformanceTest() {
   const testCases = [
-    { sessions: 100, label: '100 会话' },
-    { sessions: 500, label: '500 会话' },
-    { sessions: 1000, label: '1,000 会话' },
-    { sessions: 5000, label: '5,000 会话' },
-    { sessions: 10000, label: '10,000 会话' },
-    { sessions: 50000, label: '50,000 会话' },
+    { sessions: 100, label: '100 sessions' },
+    { sessions: 500, label: '500 sessions' },
+    { sessions: 1000, label: '1,000 sessions' },
+    { sessions: 5000, label: '5,000 sessions' },
+    { sessions: 10000, label: '10,000 sessions' },
+    { sessions: 50000, label: '50,000 sessions' },
   ];
 
-  console.log('\n=== 历史项目查询性能测试 ===\n');
-  console.log('测试场景: 读取会话 → 聚合项目统计 → 返回结果\n');
+  console.log('\n=== Historical Project Query Performance Test ===\n');
+  console.log('Scenario: read sessions → aggregate project statistics → return results\n');
 
   for (const test of testCases) {
-    // 生成测试数据
+    // Generate test data
     const sessions = generateSessions(test.sessions);
 
-    // 模拟 JSON 序列化/反序列化（LowDB 的开销）
+    // Simulate JSON serialization/deserialization overhead (similar to LowDB)
     const jsonStr = JSON.stringify({ sessions });
     const jsonSize = JSON.stringify({ sessions }).length;
 
-    // 测试 JSON.parse
+    // Measure JSON.parse
     const parseStart = Date.now();
     const parsed = JSON.parse(jsonStr);
     const parseTime = Date.now() - parseStart;
 
-    // 测试聚合逻辑
+    // Measure aggregation logic
     const aggregateStart = Date.now();
     const projects = aggregateProjects(parsed.sessions);
     const aggregateTime = Date.now() - aggregateStart;
@@ -92,30 +92,30 @@ async function runPerformanceTest() {
     const totalTime = parseTime + aggregateTime;
 
     console.log(`📊 ${test.label}`);
-    console.log(`   JSON 大小: ${(jsonSize / 1024).toFixed(2)} KB`);
+    console.log(`   JSON size: ${(jsonSize / 1024).toFixed(2)} KB`);
     console.log(`   JSON.parse: ${parseTime} ms`);
-    console.log(`   聚合计算: ${aggregateTime} ms`);
-    console.log(`   总耗时: ${totalTime} ms`);
-    console.log(`   项目数量: ${projects.length}`);
+    console.log(`   Aggregation: ${aggregateTime} ms`);
+    console.log(`   Total time: ${totalTime} ms`);
+    console.log(`   Project count: ${projects.length}`);
     console.log('');
   }
 
-  console.log('=== 性能分析 ===\n');
-  console.log('瓶颈分析:');
-  console.log('1. JSON.parse - 与文件大小成正比，主要开销');
-  console.log('2. 聚合计算 - O(n) 复杂度，相对较快');
-  console.log('3. 文件 I/O - 同步读取大文件会阻塞\n');
+  console.log('=== Performance Analysis ===\n');
+  console.log('Bottlenecks:');
+  console.log('1. JSON.parse - scales with file size and is the main overhead');
+  console.log('2. Aggregation - O(n) complexity and relatively fast');
+  console.log('3. File I/O - synchronous reads of large files block the event loop\n');
 
-  console.log('优化建议:');
-  console.log('✓ < 1,000 会话: 当前实现完全足够');
-  console.log('✓ 1,000 - 10,000 会话: 可以接受，略有延迟');
-  console.log('✓ > 10,000 会话: 建议添加缓存或使用数据库\n');
+  console.log('Recommendations:');
+  console.log('✓ < 1,000 sessions: the current implementation is more than sufficient');
+  console.log('✓ 1,000 - 10,000 sessions: acceptable, with some added latency');
+  console.log('✓ > 10,000 sessions: consider adding caching or using a database\n');
 
-  console.log('缓存方案:');
-  console.log('1. 内存缓存: 定期刷新（如每分钟）');
-  console.log('2. 增量更新: 创建会话时更新缓存');
-  console.log('3. 独立存储: 维护 projects.json 文件');
-  console.log('4. 使用 SQLite/PostgreSQL 替代 JSON 文件\n');
+  console.log('Caching options:');
+  console.log('1. In-memory cache: refresh on a schedule (for example, every minute)');
+  console.log('2. Incremental updates: update the cache when sessions are created');
+  console.log('3. Separate storage: maintain a dedicated projects.json file');
+  console.log('4. Replace JSON files with SQLite or PostgreSQL\n');
 }
 
 runPerformanceTest().catch(console.error);

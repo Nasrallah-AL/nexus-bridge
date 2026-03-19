@@ -2,7 +2,7 @@ const rateLimit = require('express-rate-limit');
 const getLogger = require('../utils/logger');
 
 /**
- * 速率限制服务
+ * Rate limiter service.
  */
 class RateLimiter {
   constructor(config) {
@@ -12,13 +12,13 @@ class RateLimiter {
   }
 
   /**
-   * 创建速率限制中间件
+   * Create rate-limiting middleware.
    */
   createLimiter(options = {}) {
     const config = this.config.rateLimit || {};
 
     if (!config.enabled || !this.config.rateLimit?.enabled) {
-      // 速率限制未启用，返回一个空中间件
+      // Rate limiting is disabled, so return a pass-through middleware.
       return (req, res, next) => next();
     }
 
@@ -46,8 +46,8 @@ class RateLimiter {
         });
       },
       skip: (req) => {
-        // 可以在这里添加跳过速率限制的逻辑
-        // 例如：跳过特定 IP 或路径
+        // Add custom skip logic here if needed.
+        // For example: skip specific IPs or paths.
         return false;
       },
     });
@@ -61,7 +61,7 @@ class RateLimiter {
   }
 
   /**
-   * 获取速率限制中间件
+   * Get the rate-limiting middleware.
    */
   getMiddleware() {
     if (!this.limiter) {
@@ -71,7 +71,7 @@ class RateLimiter {
   }
 
   /**
-   * 为特定路由创建自定义限制器
+   * Create a custom limiter for a specific route.
    */
   createCustomLimiter(options) {
     return rateLimit({

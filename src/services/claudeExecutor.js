@@ -4,9 +4,10 @@ const fs = require('fs');
 const os = require('os');
 const getLogger = require('../utils/logger');
 const { injectProviderEnv, getSafeProviderInfo, getEnvStatus } = require('../utils/providerEnv');
+const { buildCommandEnv, getEffectiveNodeBinDir } = require('../utils/runtimePaths');
 
 /**
- * Claude 执行器
+ * Claude executor.
  */
 class ClaudeExecutor {
   constructor(config, sessionStore = null, statsStore = null, messageStore = null) {
@@ -18,7 +19,7 @@ class ClaudeExecutor {
   }
 
   /**
-   * 执行 Claude 命令
+   * Execute a Claude command.
    */
   async execute(options) {
     const {
@@ -45,12 +46,12 @@ class ClaudeExecutor {
       }
     }
 
-    // 检查会话是否存在以及是否已被使用
+    // Check whether the session exists and whether it has already been used
     let sessionExists = false;
     if (sessionId && this.sessionStore) {
       try {
         const session = await this.sessionStore.get(sessionId);
-        // 会话存在且有消息记录，说明应该使用 --resume
+        // If the session exists and already has messages, we should use --resume
         sessionExists = !!(session && session.messages_count > 0);
         this.logger.info(`Session check`, {
           session_id: sessionId,
@@ -59,7 +60,7 @@ class ClaudeExecutor {
           will_resume: sessionExists
         });
       } catch (err) {
-        // 如果查询失败，假设会话不存在
+        // If the lookup fails, assume the session does not exist
         sessionExists = false;
         this.logger.debug(`Session check failed, assuming new session`, {
           session_id: sessionId,
@@ -68,7 +69,7 @@ class ClaudeExecutor {
       }
     }
 
-    // 预算控制：检查会话当前花费
+    // Budget control: check the session's current spend
     if (sessionId && maxBudgetUsd && this.sessionStore) {
       const session = await this.sessionStore.get(sessionId);
       if (session && session.total_cost_usd >= maxBudgetUsd) {
@@ -88,9 +89,9 @@ class ClaudeExecutor {
     }
 
     const startTime = Date.now();
-    const timings = {}; // 记录各步骤耗时
+    const timings = {}; // Record the duration of each step.
 
-    // ========== 步骤1：参数验证 ==========
+    // ========== Step 1: parameter validation ==========
     const step1Start = Date.now();
     this.logger.info(`[Step 1/5] Starting Claude execution`, {
       session_id: sessionId,
@@ -110,7 +111,7 @@ class ClaudeExecutor {
     timings.step1_validation = Date.now() - step1Start;
 
     try {
-      // ========== 步骤2：构建命令参数 ==========
+      // ========== Step 2: build command arguments ==========
       const step2Start = Date.now();
       const args = this.buildCommandArgs({
         prompt,
@@ -131,11 +132,11 @@ class ClaudeExecutor {
         args_count: args.length,
         args_full: args.join(' '),
         claude_path: this.config.claudePath,
-        node_bin_dir: this.config.nodeBinDir || 'not configured',
+        node_bin_dir: getEffectiveNodeBinDir(this.config) || 'not configured',
         build_time_ms: timings.step2_build_args,
       });
 
-      // ========== 步骤3：准备项目目录 ==========
+      // ========== Step 3: prepare the project directory ==========
       const step3Start = Date.now();
       const fs = require('fs');
       if (!fs.existsSync(projectPath)) {
@@ -152,7 +153,7 @@ class ClaudeExecutor {
       }
       timings.step3_prepare_dir = Date.now() - step3Start;
 
-      // ========== 步骤4：执行 Claude 命令 ==========
+      // ========== Step 4: execute the Claude command ==========
       const step4Start = Date.now();
       this.logger.info(`[Step 4/5] Spawning Claude process`, {
         claude_path: this.config.claudePath,
@@ -161,7 +162,7 @@ class ClaudeExecutor {
         env_injection: provider ? 'yes' : 'no',
       });
 
-      // 使用 spawn 异步执行
+      // Execute asynchronously with spawn
       let result;
       try {
         result = await this.spawnCommand(projectPath, args, {
@@ -177,7 +178,7 @@ class ClaudeExecutor {
         });
       } catch (spawnErr) {
         timings.step4_spawn = Date.now() - step4Start;
-        // 如果是 "Session ID already in use" 错误，尝试使用 --resume 重试
+        // If the error is "Session ID already in use", retry with --resume
         if (sessionId && spawnErr.message && spawnErr.message.includes('Session ID') && spawnErr.message.includes('already in use')) {
           this.logger.warn(`[Step 4/5] Session already in use, retrying with --resume`, {
             session_id: sessionId,
@@ -185,7 +186,7 @@ class ClaudeExecutor {
             spawn_time_ms: timings.step4_spawn,
           });
 
-          // 移除 --session-id 或 --resume，添加 --resume
+          // Remove --session-id or --resume and add --resume
           const retryArgs = args.filter(arg => arg !== '--session-id' && arg !== '--resume' && arg !== sessionId);
           retryArgs.push('--resume', sessionId);
 
@@ -202,7 +203,7 @@ class ClaudeExecutor {
             retry_time_ms: timings.step4_retry,
           });
         } else {
-          // 其他错误，直接抛出
+          // For all other errors, rethrow immediately
           this.logger.error(`[Step 4/5] Claude process failed`, {
             error: spawnErr.message,
             spawn_time_ms: timings.step4_spawn,
@@ -211,7 +212,7 @@ class ClaudeExecutor {
         }
       }
 
-      // ========== 步骤5：处理结果 ==========
+      // ========== Step 5: process the result ==========
       const step5Start = Date.now();
       const duration = Date.now() - startTime;
       const costUsd = result.total_cost_usd || 0;
@@ -225,7 +226,7 @@ class ClaudeExecutor {
       });
       timings.step5_process = Date.now() - step5Start;
 
-      // ========== 执行完成汇总 ==========
+      // ========== Execution summary ==========
       this.logger.info(`========== Execution Summary ==========`, {
         status: 'SUCCESS',
         total_duration_ms: duration,
@@ -237,7 +238,7 @@ class ClaudeExecutor {
         prompt_length: prompt?.length || 0,
       });
 
-      // 预算控制：检查执行后是否超预算
+      // Budget control: check whether execution would exceed the budget
       if (sessionId && maxBudgetUsd && this.sessionStore) {
         const session = await this.sessionStore.get(sessionId);
         const newTotalCost = (session?.total_cost_usd || 0) + costUsd;
@@ -260,7 +261,7 @@ class ClaudeExecutor {
         }
       }
 
-      // 记录统计
+      // Record statistics
       if (this.statsStore && this.config.statistics?.enabled) {
         await this.statsStore.recordRequest({
           success: true,
@@ -271,13 +272,13 @@ class ClaudeExecutor {
         });
       }
 
-      // 更新会话花费
+      // Update session cost
       if (this.sessionStore && sessionId) {
         await this.sessionStore.addCost(sessionId, costUsd);
         await this.sessionStore.incrementMessages(sessionId);
       }
 
-      // 保存 AI 回复到消息存储（用户消息已在路由层保存）
+      // Save the AI reply to message storage (the user message was already saved in the route layer)
       if (this.messageStore && sessionId) {
         try {
           await this.messageStore.addMessage(sessionId, {
@@ -293,7 +294,7 @@ class ClaudeExecutor {
           });
           this.logger.debug(`AI response saved for session`, { session_id: sessionId });
         } catch (msgErr) {
-          // 消息存储失败不影响主流程
+          // Message storage failures should not interrupt the main flow
           this.logger.warn(`Failed to save AI response for session`, {
             session_id: sessionId,
             error: msgErr.message,
@@ -312,7 +313,7 @@ class ClaudeExecutor {
     } catch (err) {
       const duration = Date.now() - startTime;
 
-      // 构建详细的错误日志
+      // Build a detailed error log
       const logData = {
         error: err.message,
         duration_ms: duration,
@@ -320,17 +321,17 @@ class ClaudeExecutor {
         model: model,
         project_path: projectPath,
         claude_path: this.config.claudePath,
-        node_bin_dir: this.config.nodeBinDir || 'not configured',
+        node_bin_dir: getEffectiveNodeBinDir(this.config) || 'not configured',
       };
 
-      // 如果有详细信息，添加到日志
+      // Add detailed information to the log when available
       if (err.details) {
         logData.details = err.details;
       }
 
       this.logger.error(`Claude command failed`, logData);
 
-      // 记录失败统计
+      // Record failure statistics
       if (this.statsStore && this.config.statistics?.enabled) {
         await this.statsStore.recordRequest({
           success: false,
@@ -342,30 +343,26 @@ class ClaudeExecutor {
         success: false,
         error: err.message,
         duration_ms: duration,
-        details: err.details || null,  // 包含详细错误信息用于调试
+        details: err.details || null,  // Include detailed error information for debugging.
       };
     }
   }
 
   /**
-   * 使用 spawn 执行命令
+   * Execute a command with spawn.
    */
   spawnCommand(projectPath, args, options = {}) {
     const { onSpawn, provider } = options;
 
     return new Promise((resolve, reject) => {
-      const env = { ...process.env };
-
-      // 如果配置了 nodeBinDir， 添加到 PATH 中
-      // 这样可以确保使用正确的 Node.js 版本（适用于 NVM、nvm-windows 等场景）
-      if (this.config.nodeBinDir) {
-        env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
-      }
+      const effectiveNodeBinDir = getEffectiveNodeBinDir(this.config);
+      const env = buildCommandEnv(this.config, process.env);
 
       // Provider settings are now handled via symlink in project directory
       // No need to modify HOME environment variable
       this.logger.debug(`Using standard environment`, {
         provider_id: provider?.id || 'none',
+        node_bin_dir: effectiveNodeBinDir || 'not configured',
       });
 
       // Unset CLAUDECODE to allow running Claude CLI from within Claude Code
@@ -381,7 +378,7 @@ class ClaudeExecutor {
         this.logger.debug(`No provider selected, using system env vars`);
       }
 
-      // 确保项目目录存在
+      // Ensure the project directory exists.
       const fs = require('fs');
       if (!fs.existsSync(projectPath)) {
         try {
@@ -396,13 +393,14 @@ class ClaudeExecutor {
         }
       }
 
-      const child = spawn(this.config.claudePath, args, {
+      const claudePath = this.config.claudePath || 'claude';
+      const child = spawn(claudePath, args, {
         cwd: projectPath,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
-      // 通知调用方子进程已创建
+      // Notify the caller that the child process has been created.
       if (onSpawn) {
         onSpawn(child);
       }
@@ -418,11 +416,11 @@ class ClaudeExecutor {
         stderr += data.toString();
       });
 
-      // 超时处理
+      // Timeout handling.
       const timeout = setTimeout(() => {
         child.kill('SIGTERM');
         reject(new Error('Command execution timeout (300s)'));
-      }, 300000); // 5分钟超时
+      }, 300000); // 5-minute timeout.
 
       child.on('close', (code) => {
         clearTimeout(timeout);
@@ -433,7 +431,7 @@ class ClaudeExecutor {
           const error = new Error(`Command failed with exit code ${code}`);
           error.details = {
             exitCode: code,
-            stdout: stdout.substring(0, 1000), // 限制输出长度
+            stdout: stdout.substring(0, 1000), // Limit output length.
             stderr: stderr.substring(0, 1000),
             fullOutput: output.substring(0, 2000),
           };
@@ -467,27 +465,27 @@ class ClaudeExecutor {
       child.on('error', (err) => {
         clearTimeout(timeout);
 
-        // 根据错误类型提供更友好的错误信息
+        // Provide a more helpful error message based on the error type
         let errorMessage = `Failed to start Claude CLI: ${err.message}`;
 
         if (err.code === 'ENOENT') {
-          // 文件不存在错误 - 检查是哪个文件
+          // File-not-found error: determine which file is missing
           const fs = require('fs');
 
-          // 检查 claudePath 是否存在
+          // Check whether claudePath exists
           if (!fs.existsSync(this.config.claudePath)) {
             errorMessage = `Claude CLI not found at "${this.config.claudePath}".\n\n` +
               `Please check:\n` +
               `1. Claude CLI is installed: npm install -g @anthropic-ai/claude-code\n` +
               `2. Configuration path is correct\n` +
-              `3. If using NVM, configure nodeBinDir in config.json\n\n` +
+              `3. If using NVM, configure nodeBinDir (or legacy nvmBin) in config.json\n\n` +
               `Current claudePath: ${this.config.claudePath}\n` +
-              `Current nodeBinDir: ${this.config.nodeBinDir || 'not configured'}`;
+              `Current nodeBinDir: ${effectiveNodeBinDir || 'not configured'}`;
           } else {
-            // claudePath 存在，可能是其他问题
+            // claudePath exists, so the issue may be elsewhere
             errorMessage = `Failed to execute command. Please check:\n` +
               `1. Claude CLI is properly installed\n` +
-              `2. nodeBinDir is correctly configured (if using NVM)\n` +
+              `2. nodeBinDir/nvmBin is correctly configured (if using NVM)\n` +
               `3. File permissions are correct\n\n` +
               `Error: ${err.message}`;
           }
@@ -497,11 +495,12 @@ class ClaudeExecutor {
         error.details = {
           spawnError: err.message,
           spawnCode: err.code,
-          claudePath: this.config.claudePath,
+          claudePath: claudePath,
           projectPath,
           args: args.join(' '),
           envPATH: env.PATH,
-          nodeBinDir: this.config.nodeBinDir,
+          nodeBinDir: effectiveNodeBinDir,
+          nvmBin: this.config.nvmBin || null,
         };
         return reject(error);
       });
@@ -509,7 +508,7 @@ class ClaudeExecutor {
   }
 
   /**
-   * 构建命令参数数组
+   * Build the command argument array.
    */
   buildCommandArgs(options) {
     const {
@@ -528,62 +527,62 @@ class ClaudeExecutor {
 
     const args = ['-p', prompt, '--output-format', 'json'];
 
-    // 添加模型
+    // Add the model
     if (model) {
       args.push('--model', model);
     }
 
-    // 添加会话 ID 或恢复会话
+    // Add the session ID or resume the session
     if (sessionId) {
       if (sessionExists) {
-        // 会话已存在，使用 --resume 恢复会话
+        // The session already exists, so resume it with --resume
         args.push('--resume', sessionId);
         this.logger.info(`Resuming existing session`, { session_id: sessionId });
       } else {
-        // 会话不存在，使用 --session-id 创建新会话
+        // The session does not exist, so create a new one with --session-id
         args.push('--session-id', sessionId);
         this.logger.info(`Creating new session`, { session_id: sessionId });
       }
     }
 
-    // 添加系统提示
+    // Add the system prompt
     if (systemPrompt) {
       args.push('--system-prompt', systemPrompt);
     }
 
-    // 添加预算限制
+    // Add the budget limit
     if (maxBudgetUsd) {
       args.push('--max-budget-usd', maxBudgetUsd.toString());
     }
 
-    // 添加允许的工具
+    // Add allowed tools
     if (allowedTools && allowedTools.length > 0) {
       args.push('--allowed-tools', allowedTools.join(','));
     }
 
-    // 添加禁止的工具
+    // Add disallowed tools
     if (disallowedTools && disallowedTools.length > 0) {
       args.push('--disallowed-tools', disallowedTools.join(','));
     }
 
-    // 添加 agent
+    // Add the agent
     if (agent) {
       args.push('--agent', agent);
     }
 
-    // 添加 MCP 配置
+    // Add MCP configuration
     const mcpConfigPath = mcpConfig || (this.config.mcp?.enabled ? this.config.mcp.configPath : null);
     if (mcpConfigPath) {
       args.push('--mcp-config', mcpConfigPath);
     }
 
-    // 添加 permission-mode 参数
+    // Add the permission-mode argument
     if (permissionMode) {
       args.push('--permission-mode', permissionMode);
       this.logger.info(`Using permission mode: ${permissionMode}`);
     }
 
-    // 根据配置决定是否跳过权限检查（默认不跳过）
+    // Decide whether to skip permission checks based on configuration (disabled by default)
     if (this.config.allowDangerouslySkipPermissions === true) {
       args.push('--dangerously-skip-permissions');
       this.logger.warn('Dangerously skipping permissions - use with caution');
@@ -593,7 +592,7 @@ class ClaudeExecutor {
   }
 
   /**
-   * 转义 shell 参数（保留用于可能的 shell 命令）
+   * Escape shell arguments (kept for potential shell commands).
    */
   escapeArg(arg) {
     return arg.replace(/'/g, "'\"'\"'");

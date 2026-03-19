@@ -4,7 +4,7 @@ describe('KeyGenerator', () => {
   describe('generateSecretKey', () => {
     test('should generate a secret key with correct prefix', () => {
       const secretKey = generateSecretKey();
-      expect(secretKey).toMatch(/^ccs_sk_[a-f0-9]{64}$/);
+      expect(secretKey).toMatch(/^nb_sk_[A-Za-z0-9_-]{43}$/);
     });
 
     test('should generate unique secret keys', () => {
@@ -15,8 +15,8 @@ describe('KeyGenerator', () => {
 
     test('should generate 32-byte hex string', () => {
       const secretKey = generateSecretKey();
-      const hexPart = secretKey.replace('ccs_sk_', '');
-      expect(hexPart.length).toBe(64); // 32 bytes = 64 hex characters
+      const encodedPart = secretKey.replace('nb_sk_', '');
+      expect(encodedPart.length).toBe(43); // 32 bytes in base64url without padding = 43 chars
     });
   });
 
@@ -24,7 +24,7 @@ describe('KeyGenerator', () => {
     test('should derive API key from secret key', () => {
       const secretKey = generateSecretKey();
       const apiKey = deriveApiKey(secretKey);
-      expect(apiKey).toMatch(/^ccs_ak_[a-f0-9]{64}$/);
+      expect(apiKey).toMatch(/^nb_ak_[A-Za-z0-9_-]{43}$/);
     });
 
     test('should generate same API key for same secret key', () => {
@@ -43,7 +43,7 @@ describe('KeyGenerator', () => {
     });
 
     test('should be deterministic', () => {
-      const knownSecretKey = 'ccs_sk_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+      const knownSecretKey = 'nb_sk_0123456789abcdef0123456789abcdef012345678';
       const apiKey1 = deriveApiKey(knownSecretKey);
       const apiKey2 = deriveApiKey(knownSecretKey);
       expect(apiKey1).toBe(apiKey2);

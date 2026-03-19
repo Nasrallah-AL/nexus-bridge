@@ -3,31 +3,31 @@ const path = require('path');
 const fs = require('fs');
 
 /**
- * 日志工具
+ * Logging utility.
  */
 class Logger {
   constructor(config = {}) {
-    this.logFile = config.logFile || path.join(process.env.HOME || require('os').homedir(), '.claude-code-server', 'logs', 'server.log');
+    this.logFile = config.logFile || path.join(process.env.HOME || require('os').homedir(), '.nexus-bridge', 'logs', 'server.log');
     this.logLevel = config.logLevel || 'info';
     this.logger = null;
   }
 
   /**
-   * 初始化日志
+   * Initialize logging.
    */
   init() {
-    // 如果 logger 已存在，不重新创建（避免重复初始化）
+    // Do not recreate the logger if it already exists.
     if (this.logger) {
       return;
     }
 
-    // 确保日志目录存在
+    // Ensure the log directory exists.
     const logDir = path.dirname(this.logFile);
     if (!fs.existsSync(logDir)) {
       fs.mkdirSync(logDir, { recursive: true });
     }
 
-    // 只使用文件传输，完全不使用控制台输出
+    // Use only file transports and avoid console output entirely.
     const transports = [
       new winston.transports.File({
         filename: this.logFile,
@@ -36,7 +36,7 @@ class Logger {
       }),
     ];
 
-    // 创建 logger
+    // Create the logger instance.
     this.logger = winston.createLogger({
       level: this.logLevel,
       format: winston.format.combine(
@@ -75,11 +75,11 @@ class Logger {
   }
 }
 
-// 单例 - 简化实现，避免重复创建
+// Singleton instance to avoid duplicate logger creation.
 let loggerInstance = null;
 
 function getLogger(config) {
-  // 如果实例不存在，创建新实例
+  // Create the instance on first use.
   if (!loggerInstance) {
     loggerInstance = new Logger(config);
     loggerInstance.init();

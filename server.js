@@ -2,25 +2,27 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const chalk = require('chalk');
 const { generateSecretKey, deriveApiKey } = require('./src/utils/keyGenerator');
+const { syncNodeBinConfig } = require('./src/utils/runtimePaths');
 
-// 配置目录和文件
-const configDir = path.join(process.env.HOME || os.homedir(), '.claude-code-server');
+// Configuration directory and files
+const runtimeDirName = '.nexus-bridge';
+const configDir = path.join(process.env.HOME || os.homedir(), runtimeDirName);
 const configPath = path.join(configDir, 'config.json');
 
-// 默认配置（用于未找到路径时的回退）
-// 注意：这些路径会在 loadConfig() 中动态修正
+// Default configuration used as a fallback when paths are not found
+// Note: these paths are adjusted dynamically in loadConfig()
 const defaultConfig = {
   port: 5546,
   host: '0.0.0.0',
   trustProxy: 1, // Trust first reverse proxy (number for security, not boolean)
-  claudePath: path.join(process.env.HOME || os.homedir(), '.nvm', 'versions', 'node', 'v22.21.0', 'bin', 'claude'),
-  nvmBin: path.join(process.env.HOME || os.homedir(), '.nvm', 'versions', 'node', 'v22.21.0', 'bin'),
-  workspacePath: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'workspace'),
-  logFile: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'logs', 'server.log'),
-  pidFile: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'server.pid'),
-  dataDir: path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'data'),
+  claudePath: 'claude',
+  nodeBinDir: null,
+  nvmBin: null,
+  workspacePath: path.join(process.env.HOME || os.homedir(), runtimeDirName, 'workspace'),
+  logFile: path.join(process.env.HOME || os.homedir(), runtimeDirName, 'logs', 'server.log'),
+  pidFile: path.join(process.env.HOME || os.homedir(), runtimeDirName, 'server.pid'),
+  dataDir: path.join(process.env.HOME || os.homedir(), runtimeDirName, 'data'),
   sessionRetentionDays: 30,
   security: {
     auth: {
@@ -34,148 +36,173 @@ const defaultConfig = {
   }
 };
 
-// 加载配置（支持异步路径检测）
+// Load configuration (supports async path detection)
 async function loadConfig() {
-  // 确保所有必要目录都存在
+  // Ensure all required directories exist
   const dirsToCreate = [
     configDir,
-    path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'logs'),
-    path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'data'),
+    path.join(process.env.HOME || os.homedir(), runtimeDirName, 'logs'),
+    path.join(process.env.HOME || os.homedir(), runtimeDirName, 'data'),
   ];
 
   for (const dir of dirsToCreate) {
     if (!fs.existsSync(dir)) {
       try {
         fs.mkdirSync(dir, { recursive: true });
-        console.log(`✅ 创建目录: ${dir}`);
+        console.log(`✅ Created directory: ${dir}`);
       } catch (err) {
-        console.error(`❌ 创建目录失败 ${dir}:`, err.message);
-        // 尝试继续，不中断流程
+        console.error(`❌ Failed to create directory ${dir}:`, err.message);
+        // Try to continue without interrupting startup
       }
     }
   }
 
   let config;
   if (!fs.existsSync(configPath)) {
-    // 首次启动，使用默认配置
+    // First startup: use the default configuration
     config = { ...defaultConfig };
     config.security.auth.secretKey = generateSecretKey();
     try {
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-      console.log(`✅ 创建配置文件: ${configPath}`);
-      console.log(`✅ 已自动生成 SECRET_KEY`);
+      console.log(`✅ Created config file: ${configPath}`);
+      console.log(`✅ Automatically generated SECRET_KEY`);
       const apiKey = deriveApiKey(config.security.auth.secretKey);
       console.log(`📝 API Key: ${apiKey}`);
     } catch (err) {
-      console.error(`❌ 创建配置文件失败 ${configPath}:`, err.message);
+      console.error(`❌ Failed to create config file ${configPath}:`, err.message);
       throw err;
     }
   } else {
     config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    let configUpdated = false;
     if (!config.security) {
       config.security = { auth: { enabled: false, bypassHealthCheck: true } };
+      configUpdated = true;
     }
     if (!config.security.auth) {
       config.security.auth = { enabled: false, bypassHealthCheck: true };
+      configUpdated = true;
     }
     if (!config.security.auth.secretKey) {
       config.security.auth.secretKey = generateSecretKey();
+      configUpdated = true;
       try {
         fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-        console.log(`✅ 已自动生成 SECRET_KEY (迁移)`);
+        console.log(`✅ Automatically generated SECRET_KEY (migration)`);
         const apiKey = deriveApiKey(config.security.auth.secretKey);
         console.log(`📝 API Key: ${apiKey}`);
       } catch (err) {
-        console.error(`❌ 更新配置失败 ${configPath}:`, err.message);
+        console.error(`❌ Failed to update config ${configPath}:`, err.message);
       }
     }
     // Migrate swaggerDocs config if not present
     if (config.security && !config.security.swaggerDocs) {
       config.security.swaggerDocs = { enabled: true };
+      configUpdated = true;
       try {
         fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-        console.log(`✅ 已添加 swaggerDocs 配置 (默认启用)`);
+        console.log(`✅ Added swaggerDocs configuration (enabled by default)`);
       } catch (err) {
-        console.error(`❌ 更新配置失败 ${configPath}:`, err.message);
+        console.error(`❌ Failed to update config ${configPath}:`, err.message);
+      }
+    }
+
+    if (!config.claudePath) {
+      config.claudePath = defaultConfig.claudePath;
+      configUpdated = true;
+    }
+
+    const syncResult = syncNodeBinConfig(config);
+    if (syncResult.changed) {
+      configUpdated = true;
+    }
+
+    if (configUpdated) {
+      try {
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      } catch (err) {
+        console.error(`❌ Failed to update config ${configPath}:`, err.message);
       }
     }
   }
 
-  // 自动检测和修复路径
+  // Automatically detect and repair paths
   const PathResolver = require('./src/utils/pathResolver');
   const resolver = new PathResolver();
   const results = await resolver.detectAndValidate(config);
   const { updates, warnings } = resolver.applyDetectionResults(config, results);
 
-  // 如果路径有更新，保存配置（排除 _pathDetection）
+  // If any paths were updated, save the config (excluding _pathDetection)
   if (updates.length > 0) {
     const configToSave = { ...config };
     delete configToSave._pathDetection;
     try {
       fs.writeFileSync(configPath, JSON.stringify(configToSave, null, 2));
-      console.log(`✅ 配置已更新: ${configPath}`);
+      console.log(`✅ Configuration updated: ${configPath}`);
     } catch (err) {
-      console.error(`❌ 更新配置失败 ${configPath}:`, err.message);
+      console.error(`❌ Failed to update config ${configPath}:`, err.message);
     }
   }
 
-  // 保存诊断信息用于日志输出
+  // Save diagnostic information for logging
   config._pathDetection = { updates, warnings };
 
-  // 兼容旧配置：如果有 defaultProjectPath，迁移到 workspacePath
+  syncNodeBinConfig(config);
+
+  // Backward compatibility: migrate defaultProjectPath to workspacePath
   if (config.defaultProjectPath) {
     if (!config.workspacePath) {
       config.workspacePath = config.defaultProjectPath;
     }
     delete config.defaultProjectPath;
-    // 保存更新后的配置（排除 _pathDetection）
+    // Save the updated config (excluding _pathDetection)
     const configToSave = { ...config };
     delete configToSave._pathDetection;
     try {
       fs.writeFileSync(configPath, JSON.stringify(configToSave, null, 2));
-      console.log(`✅ 已迁移 defaultProjectPath → workspacePath`);
+      console.log(`✅ Migrated defaultProjectPath → workspacePath`);
     } catch (err) {
-      console.error(`❌ 更新配置失败:`, err.message);
+      console.error(`❌ Failed to update config:`, err.message);
     }
   }
 
-  // 展开 workspacePath 中的 ~ 符号
+  // Expand `~` in workspacePath
   if (config.workspacePath && config.workspacePath.startsWith('~')) {
     config.workspacePath = path.join(os.homedir(), config.workspacePath.substring(2));
   }
 
-  // 确保 workspacePath 存在，不存在则使用默认值
+  // Ensure workspacePath exists, otherwise fall back to the default
   if (!config.workspacePath) {
-    config.workspacePath = path.join(process.env.HOME || os.homedir(), '.claude-code-server', 'workspace');
+    config.workspacePath = path.join(process.env.HOME || os.homedir(), runtimeDirName, 'workspace');
   }
 
-  // 确保工作空间目录存在
+  // Ensure the workspace directory exists
   if (!fs.existsSync(config.workspacePath)) {
     try {
       fs.mkdirSync(config.workspacePath, { recursive: true });
-      console.log(`✅ 已创建工作空间目录: ${config.workspacePath}`);
+      console.log(`✅ Created workspace directory: ${config.workspacePath}`);
     } catch (err) {
-      console.error(`❌ 创建工作空间目录失败:`, err.message);
+      console.error(`❌ Failed to create workspace directory:`, err.message);
     }
   }
 
   // Environment variable overrides (take precedence)
-  if (process.env.CCS_SECRET_KEY) {
-    config.security.auth.secretKey = process.env.CCS_SECRET_KEY;
+  if (process.env.NEXUS_BRIDGE_SECRET_KEY) {
+    config.security.auth.secretKey = process.env.NEXUS_BRIDGE_SECRET_KEY;
   }
-  if (process.env.CCS_AUTH_ENABLED !== undefined) {
-    config.security.auth.enabled = process.env.CCS_AUTH_ENABLED === 'true';
+  if (process.env.NEXUS_BRIDGE_AUTH_ENABLED !== undefined) {
+    config.security.auth.enabled = process.env.NEXUS_BRIDGE_AUTH_ENABLED === 'true';
   }
 
   return config;
 }
 
-// 主初始化函数
+// Main initialization function
 async function main() {
-  // 加载配置（包含路径自动检测）
+  // Load configuration, including automatic path detection
   const config = await loadConfig();
 
-  // 确保日志目录存在
+  // Ensure the log directory exists
   if (config.logFile) {
     const logDir = path.dirname(config.logFile);
     if (!fs.existsSync(logDir)) {
@@ -183,11 +210,11 @@ async function main() {
     }
   }
 
-  // 获取 logger
+  // Get the logger
   const getLogger = require('./src/utils/logger');
   const logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
 
-  // 输出路径检测结果
+  // Log path detection results
   if (config._pathDetection.updates.length > 0) {
     logger.info('Auto-detected paths:', { updates: config._pathDetection.updates });
   }
@@ -195,10 +222,10 @@ async function main() {
     logger.warn('Path detection warnings:', { warnings: config._pathDetection.warnings });
   }
 
-  // 删除内部诊断信息
+  // Remove internal diagnostic information
   delete config._pathDetection;
 
-  // 重置所有服务模块的缓存（确保后台模式使用正确的配置）
+  // Reset cached service modules so background mode uses the correct config
   const modulePaths = [
     './src/utils/logger',
     './src/services/claudeExecutor',
@@ -219,7 +246,7 @@ async function main() {
     delete require.cache[require.resolve(modPath)];
   });
 
-  // 初始化存储
+  // Initialize storage
   const SessionStore = require('./src/storage/sessionStore');
   const TaskStore = require('./src/storage/taskStore');
   const StatsStore = require('./src/storage/statsStore');
@@ -230,7 +257,7 @@ async function main() {
   const statsStore = new StatsStore(config.dataDir + '/statistics');
   const messageStore = new MessageStore(config.dataDir + '/messages');
 
-  // 初始化服务
+  // Initialize services
   const ClaudeExecutor = require('./src/services/claudeExecutor');
   const SessionManager = require('./src/services/sessionManager');
   const RateLimiter = require('./src/services/rateLimiter');
@@ -256,9 +283,11 @@ async function main() {
   const auditLogger = new AuditLogger(config, statsStore);
   const streamManager = new StreamManager(config);
 
-  // 加载路由
+  // Load routes
   const createHealthRoute = require('./src/routes/health');
   const createConfigRoute = require('./src/routes/config');
+  const createModelRoutes = require('./src/routes/models');
+  const createMcpRoutes = require('./src/routes/mcp');
   const { createClaudeRoutes, createAsyncClaudeRoutes } = require('./src/routes/claude');
   const createSessionRoutes = require('./src/routes/sessions');
   const createProjectsRoutes = require('./src/routes/projects');
@@ -266,7 +295,7 @@ async function main() {
   const createTaskRoutes = require('./src/routes/tasks');
   const createAuthMiddleware = require('./src/middleware/auth');
 
-  // 创建 Express 应用
+  // Create the Express application
   const app = express();
   const PORT = process.env.PORT || config.port;
   const HOST = process.env.HOST || config.host;
@@ -276,7 +305,7 @@ async function main() {
   // Use number (e.g., 1 = trust first proxy) instead of boolean for security
   app.set('trust proxy', config.trustProxy ?? 1);
 
-  // 中间件
+  // Middleware
   app.use(express.json({ limit: '10mb' })); // Prevent DoS attacks with large payloads
 
   // Create authentication middleware
@@ -286,12 +315,14 @@ async function main() {
   // Must come after body parser, before route mounting
   app.use('/api/', authMiddleware);
 
-  // 应用速率限制
+  // Apply rate limiting
   app.use('/api/', rateLimiter.getMiddleware());
 
-  // 挂载路由
+  // Mount routes
   app.get('/health', createHealthRoute());
-  app.get('/api/config', createConfigRoute(configPath));
+  app.use('/api/config', createConfigRoute(config, configPath, providerRouter));
+  app.use('/api/models', createModelRoutes(config, statisticsCollector));
+  app.use('/api/mcp', createMcpRoutes(config));
   // Synchronous messages and batch processing
   app.use('/api/messages', createClaudeRoutes(claudeExecutor, config, null, sessionManager, providerRouter));
   // Asynchronous message processing
@@ -318,7 +349,7 @@ async function main() {
 
   // Serve Swagger UI (with middleware check)
   app.use('/api-docs', swaggerDocsMiddleware, swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-    customSiteTitle: 'Claude Code Server API Documentation',
+    customSiteTitle: 'Nexus Bridge API Documentation',
     customCss: '.swagger-ui .topbar { display: none }',
     swaggerOptions: {
       persistAuthorization: true,
@@ -339,29 +370,29 @@ async function main() {
   const swaggerDocsStatus = config.security?.swaggerDocs?.enabled === false ? 'disabled' : 'enabled';
   logger.info(`Swagger Documentation: ${swaggerDocsStatus} at /api-docs (hot-reload enabled)`);
 
-  // 配置热重载
+  // Configuration hot reload
   let configWatcher = null;
   let reloadCount = 0;
 
-  // 热重载配置
+  // Hot-reload the configuration
   async function hotReloadConfig() {
     try {
       reloadCount++;
 
-      // 重新加载配置
+      // Reload configuration
       const newConfig = await loadConfig();
 
-      // 检查关键配置变化
+      // Check for key configuration changes
       const configChanges = [];
 
-      // workspacePath 变化检测
+      // Detect workspacePath changes
       if (newConfig.workspacePath !== config.workspacePath) {
         configChanges.push(`workspacePath: ${config.workspacePath} → ${newConfig.workspacePath}`);
       }
 
       if (newConfig.taskQueue?.concurrency !== config.taskQueue?.concurrency) {
         configChanges.push(`taskQueue.concurrency: ${config.taskQueue?.concurrency} → ${newConfig.taskQueue?.concurrency}`);
-        // 更新 TaskQueue 并发数
+        // Update TaskQueue concurrency
         taskQueue.concurrency = newConfig.taskQueue?.concurrency || 3;
         taskQueue.defaultTimeout = newConfig.taskQueue?.defaultTimeout || 300000;
       }
@@ -372,9 +403,9 @@ async function main() {
           newConfig.webhook?.defaultUrl !== config.webhook?.defaultUrl) {
         configChanges.push(`webhook.enabled: ${config.webhook?.enabled} → ${newConfig.webhook?.enabled}`);
         if (newConfig.webhook?.defaultUrl !== config.webhook?.defaultUrl) {
-          configChanges.push(`webhook.defaultUrl: ${config.webhook?.defaultUrl || '(未设置)'} → ${newConfig.webhook?.defaultUrl || '(未设置)'}`);
+          configChanges.push(`webhook.defaultUrl: ${config.webhook?.defaultUrl || '(not set)'} → ${newConfig.webhook?.defaultUrl || '(not set)'}`);
         }
-        // 更新 WebhookNotifier 配置
+        // Update the WebhookNotifier configuration
         webhookNotifier.updateConfig(newConfig);
       }
       if (newConfig.logLevel !== config.logLevel) {
@@ -382,7 +413,7 @@ async function main() {
       }
       if (newConfig.security?.swaggerDocs?.enabled !== config.security?.swaggerDocs?.enabled) {
         configChanges.push(`security.swaggerDocs.enabled: ${config.security?.swaggerDocs?.enabled} → ${newConfig.security?.swaggerDocs?.enabled}`);
-        configChanges.push(`Swagger 文档访问: ${newConfig.security.swaggerDocs.enabled === false ? '已禁用' : '已启用'} (实时生效)`);
+        configChanges.push(`Swagger documentation access: ${newConfig.security.swaggerDocs.enabled === false ? 'disabled' : 'enabled'} (applied immediately)`);
       }
       if (JSON.stringify(newConfig.providers) !== JSON.stringify(config.providers) ||
           JSON.stringify(newConfig.loadBalance) !== JSON.stringify(config.loadBalance)) {
@@ -391,34 +422,34 @@ async function main() {
         providerRouter.updateConfig(newConfig);
       }
 
-      // 更新配置对象（保留引用）
+      // Update the config object while preserving references
       Object.assign(config, newConfig);
 
       if (configChanges.length > 0) {
-        logger.info(`[Config Reload #${reloadCount}] 配置已更新:`, { changes: configChanges });
+        logger.info(`[Config Reload #${reloadCount}] Configuration updated:`, { changes: configChanges });
       } else {
-        logger.info(`[Config Reload #${reloadCount}] 配置文件已重新加载（无变化）`);
+        logger.info(`[Config Reload #${reloadCount}] Configuration file reloaded (no changes)`);
       }
 
-      logger.info(`[Config Reload #${reloadCount}] 当前任务队列并发数: ${taskQueue.concurrency}`);
+      logger.info(`[Config Reload #${reloadCount}] Current task queue concurrency: ${taskQueue.concurrency}`);
     } catch (error) {
       const logger = require('./src/utils/logger')({ logFile: config.logFile, logLevel: 'error' });
-      logger.error(`[Config Reload #${reloadCount}] 配置重载失败:`, { error: error.message });
+      logger.error(`[Config Reload #${reloadCount}] Configuration reload failed:`, { error: error.message });
     }
   }
 
-  // 启动配置文件监听
+  // Start watching the config file
   function startConfigWatcher() {
     if (configWatcher) {
-      return; // 已经在监听
+      return; // Already watching
     }
 
     try {
-      // 使用防抖，避免多次触发
+      // Debounce events to avoid repeated triggers
       let reloadTimer = null;
-      const DEBOUNCE_DELAY = 500; // 500ms 防抖
+      const DEBOUNCE_DELAY = 500; // 500ms debounce
 
-      configWatcher = fs.watch(configPath, (eventType, filename) => {
+      configWatcher = fs.watch(configPath, (eventType) => {
         if (eventType === 'change') {
           if (reloadTimer) {
             clearTimeout(reloadTimer);
@@ -430,37 +461,37 @@ async function main() {
         }
       });
       const logger = require('./src/utils/logger')({ logFile: config.logFile, logLevel: config.logLevel });
-      logger.info(`配置文件监听已启动: ${configPath}`);
-      logger.info('配置文件修改将自动生效（热重载）');
+      logger.info(`Config file watcher started: ${configPath}`);
+      logger.info('Config file changes will be applied automatically (hot reload)');
     } catch (error) {
       const logger = require('./src/utils/logger')({ logFile: config.logFile, logLevel: 'error' });
-      logger.error('启动配置文件监听失败:', { error: error.message });
+      logger.error('Failed to start config file watcher:', { error: error.message });
     }
   }
 
-// 启动服务器
+// Start the server
   const server = app.listen(PORT, HOST, async () => {
-    // 初始化存储
+    // Initialize storage
     await sessionStore.init();
     await taskStore.init();
     await statsStore.init();
     await messageStore.init();
 
     const logger = require('./src/utils/logger')({ logFile: config.logFile, logLevel: config.logLevel });
-    logger.info(`Claude Code Server started on http://${HOST}:${PORT}`);
+    logger.info(`Nexus Bridge started on http://${HOST}:${PORT}`);
     logger.info(`Claude path: ${config.claudePath}`);
     logger.info(`Workspace: ${config.workspacePath}`);
 
-    // 启动统计收集器
+    // Start the statistics collector
     statisticsCollector.start();
 
-    // 启动任务队列
+    // Start the task queue
     await taskQueue.start();
 
-    // 启动配置文件监听
+    // Start the config file watcher
     startConfigWatcher();
 
-    // 写入 PID 文件
+    // Write the PID file
     if (config.pidFile) {
       const pidDir = path.dirname(config.pidFile);
       if (!fs.existsSync(pidDir)) {
@@ -470,35 +501,35 @@ async function main() {
     }
   });
 
-  // 优雅关闭
+  // Graceful shutdown
   async function shutdown(signal) {
     const logger = require('./src/utils/logger')({ logFile: config.logFile, logLevel: config.logLevel });
     logger.info(`${signal} received, shutting down gracefully...`);
 
-    // 停止配置文件监听
+    // Stop watching the config file
     if (configWatcher) {
       configWatcher.close();
       configWatcher = null;
-      logger.info('配置文件监听已停止');
+      logger.info('Config file watcher stopped');
     }
 
-    // 停止统计收集器
+    // Stop the statistics collector
     statisticsCollector.stop();
 
-    // 停止任务队列
+    // Stop the task queue
     await taskQueue.stop();
 
     server.close(() => {
       logger.info('Server closed');
 
-      // 删除 PID 文件
+      // Remove the PID file
       if (fs.existsSync(config.pidFile)) {
         fs.unlinkSync(config.pidFile);
       }
       process.exit(0);
     });
 
-    // 强制退出超时
+    // Forced shutdown timeout
     setTimeout(() => {
       logger.error('Forced shutdown after timeout');
       process.exit(1);
@@ -511,7 +542,7 @@ async function main() {
 
 module.exports = main;
 
-// 如果直接运行此文件，捕获错误
+// If this file is run directly, catch startup errors
 if (require.main === module) {
   main().catch(err => {
     console.error('Failed to start server:', err);

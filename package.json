@@ -1,10 +1,10 @@
 {
-  "name": "@csdwd/ccs",
+  "name": "nexus-bridge",
   "version": "1.1.7",
-  "description": "A HTTP API wrapper for Claude CLI with session management, async tasks, and TUI management tool",
+  "description": "Nexus Bridge is an HTTP API wrapper for Claude CLI with sessions, async tasks, streaming, load balancing, and a TUI management tool",
   "main": "server.js",
   "bin": {
-    "ccs": "./cli.js"
+    "nexus-bridge": "./cli.js"
   },
   "scripts": {
     "start": "node server.js",
@@ -25,17 +25,17 @@
     "claude",
     "claude-cli",
     "claude-code",
-    "claude-code-server",
+    "nexus-bridge",
     "claude-code-api",
     "claude-code-api-server"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/csdwd/claude-code-server.git"
+    "url": "git+https://github.com/csdwd/nexus-bridge.git"
   },
-  "homepage": "https://github.com/csdwd/claude-code-server#readme",
+  "homepage": "https://github.com/csdwd/nexus-bridge#readme",
   "bugs": {
-    "url": "https://github.com/csdwd/claude-code-server/issues"
+    "url": "https://github.com/csdwd/nexus-bridge/issues"
   },
   "author": "csdwd",
   "license": "MIT",

@@ -1,14 +1,14 @@
 const Validators = require('../../../utils/validators');
 
 /**
- * 统一的请求验证和解析
+ * Shared request validation and parsing.
  * @param {object} req - Express request
  * @param {object} res - Express response
- * @param {object} config - 配置对象
- * @returns {object|null} 验证结果，失败时返回 null
+ * @param {object} config - Configuration object
+ * @returns {object|null} Validation result, or null when validation fails
  */
 function validateAndParseRequest(req, res, config) {
-  // 1. 验证请求体
+  // 1. Validate the request body
   const validation = Validators.validateClaudeRequest(req.body);
   if (!validation.valid) {
     res.status(400).json({
@@ -18,7 +18,7 @@ function validateAndParseRequest(req, res, config) {
     return null;
   }
 
-  // 2. 验证项目路径（必须在工作空间下）
+  // 2. Validate the project path (must be inside the workspace)
   const pathValidation = Validators.validateProjectPath(
     req.body.project_path,
     config.workspacePath

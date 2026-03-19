@@ -1,16 +1,16 @@
-# Claude Code Server
+# Nexus Bridge
 
 > Enterprise-grade HTTP API wrapper for Claude CLI with complete features including session management, async tasks, statistics monitoring, and more
 
-[![npm version](https://img.shields.io/npm/v/@csdwd/ccs.svg)](https://www.npmjs.com/package/@csdwd/ccs)
-[![Node.js](https://img.shields.io/node/v/@csdwd/ccs.svg)](https://nodejs.org/)
-[![License](https://img.shields.io/npm/l/@csdwd/ccs.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/nexus-bridge.svg)](https://www.npmjs.com/package/nexus-bridge)
+[![Node.js](https://img.shields.io/node/v/nexus-bridge.svg)](https://nodejs.org/)
+[![License](https://img.shields.io/npm/l/nexus-bridge.svg)](LICENSE)
 
-[**简体中文**](README_zh.md) | English
+[**Simplified Chinese**](README_zh.md) | English
 
 ---
 
-Claude Code Server is a full-featured HTTP API service that wraps the Anthropic Claude CLI as an easy-to-use RESTful API. It supports enterprise-level features such as multi-turn conversations, async task queues, statistics and analytics, Webhook callbacks, and comes with an intuitive TUI management tool.
+Nexus Bridge is a full-featured HTTP API service that wraps the Anthropic Claude CLI as an easy-to-use RESTful API. It supports enterprise-level features such as multi-turn conversations, async task queues, statistics and analytics, Webhook callbacks, and comes with an intuitive TUI management tool.
 
 ## ✨ Features
 
@@ -38,11 +38,11 @@ Claude Code Server is a full-featured HTTP API service that wraps the Anthropic 
 
 ### Using npx (Recommended)
 
-The fastest way to use Claude Code Server - no installation required:
+The fastest way to use Nexus Bridge - no installation required:
 
 ```bash
 # Run directly with npx
-npx @csdwd/ccs
+npx nexus-bridge
 ```
 
 This will launch the TUI management tool where you can:
@@ -55,25 +55,25 @@ This will launch the TUI management tool where you can:
 
 ```bash
 # Install globally
-npm install -g @csdwd/ccs
+npm install -g nexus-bridge
 
 # Then run anywhere to launch the TUI
-ccs
+nexus-bridge
 
 # Direct commands
-ccs start      # Start the server
-ccs stop       # Stop the server
-ccs status     # Check server status
+nexus-bridge start      # Start the server
+nexus-bridge stop       # Stop the server
+nexus-bridge status     # Check server status
 ```
 
 ### CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `npx @csdwd/ccs` | Launch TUI management tool (interactive) |
-| `npx @csdwd/ccs start` | Start the server |
-| `npx @csdwd/ccs stop` | Stop the server |
-| `npx @csdwd/ccs status` | Check server status |
+| `npx nexus-bridge` | Launch TUI management tool (interactive) |
+| `npx nexus-bridge start` | Start the server |
+| `npx nexus-bridge stop` | Stop the server |
+| `npx nexus-bridge status` | Check server status |
 
 ## 🛠️ Running the Project
 
@@ -87,8 +87,8 @@ ccs status     # Check server status
 
 ```bash
 # Clone the project
-git clone https://github.com/csdwd/claude-code-server.git
-cd claude-code-server
+git clone https://github.com/csdwd/nexus-bridge.git
+cd nexus-bridge
 
 # Install dependencies
 npm install
@@ -104,7 +104,7 @@ node cli.js status   # Check server status
 
 ## ⚙️ Configuration
 
-The configuration file is located at `~/.claude-code-server/config.json` (auto-generated on first startup):
+The configuration file is located at `~/.nexus-bridge/config.json` (auto-generated on first startup):
 
 ```json
 {
@@ -113,9 +113,9 @@ The configuration file is located at `~/.claude-code-server/config.json` (auto-g
   "claudePath": "claude",
   "nodeBinDir": null,
   "defaultProjectPath": "~/workspace",
-  "logFile": "~/.claude-code-server/logs/server.log",
-  "pidFile": "~/.claude-code-server/server.pid",
-  "dataDir": "~/.claude-code-server/data",
+  "logFile": "~/.nexus-bridge/logs/server.log",
+  "pidFile": "~/.nexus-bridge/server.pid",
+  "dataDir": "~/.nexus-bridge/data",
   "taskQueue": {
     "concurrency": 3,
     "defaultTimeout": 300000
@@ -143,8 +143,10 @@ The configuration file is located at `~/.claude-code-server/config.json` (auto-g
 - `nodeBinDir` is optional, only needed when specifying a particular Node.js version
 - If using NVM, configure like:
   ```json
-  "claudePath": "claude",
-  "nodeBinDir": "~/.nvm/versions/node/v22.21.0/bin"
+  {
+    "claudePath": "claude",
+    "nodeBinDir": "~/.nvm/versions/node/v22.21.0/bin"
+  }
   ```
 - For system Node.js, keep `nodeBinDir` as `null`
 
@@ -158,6 +160,7 @@ curl http://localhost:5546/health
 curl -X POST http://localhost:5546/api/messages \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Explain what HTTP is"}'
+```
 
 ## 📚 API Documentation
 
@@ -244,11 +247,11 @@ eventSource.addEventListener('error', (e) => {
 
 ## ⚖️ Load Balancing
 
-Claude Code Server supports multi-provider load balancing with session affinity, allowing you to distribute requests across multiple Anthropic API keys or third-party compatible endpoints.
+Nexus Bridge supports multi-provider load balancing with session affinity, allowing you to distribute requests across multiple Anthropic API keys or third-party compatible endpoints.
 
 ### Configuration
 
-Add `providers` and `loadBalance` sections to your `~/.claude-code-server/config.json`:
+Add `providers` and `loadBalance` sections to your `~/.nexus-bridge/config.json`:
 
 ```json
 {
@@ -336,6 +339,12 @@ The `providers[].env` object allows you to inject additional environment variabl
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/api/config` | GET | View the effective runtime config with secrets redacted |
+| `/api/config/features` | GET | View feature flags, runtime toggles, and load-balancing status |
+| `/api/config/providers` | GET | View provider summaries, health, and configured model overrides |
+| `/api/models` | GET | List configured models and top observed models from statistics |
+| `/api/mcp` | GET | View MCP status, file availability, and configured server summary |
+| `/api/mcp/config` | GET | View the redacted MCP config file contents |
 | `/api/load-balance/status` | GET | View all providers health, request counts, and binding stats |
 | `/api/load-balance/bindings` | GET | View current session-provider bindings |
 | `/api/load-balance/providers/:id/reset` | POST | Reset provider health status |
@@ -345,6 +354,21 @@ The `providers[].env` object allows you to inject additional environment variabl
 **Example - Check Status:**
 ```bash
 curl http://localhost:5546/api/load-balance/status
+```
+
+**Example - View runtime configuration:**
+```bash
+curl http://localhost:5546/api/config
+```
+
+**Example - List configured models:**
+```bash
+curl http://localhost:5546/api/models
+```
+
+**Example - Inspect MCP status:**
+```bash
+curl http://localhost:5546/api/mcp
 ```
 
 **Response:**
@@ -389,7 +413,7 @@ When no `providers` configuration exists, the system works exactly as before usi
 
 ## 🖥️ TUI Management Tool
 
-Claude Code Server comes with a full-featured TUI management tool:
+Nexus Bridge comes with a full-featured TUI management tool:
 
 ### Main Menu Functions
 
@@ -455,9 +479,9 @@ node cli.js
 | `claudePath` | string | "claude" | Claude CLI executable path |
 | `nodeBinDir` | string | null | Node.js bin directory (optional) |
 | `defaultProjectPath` | string | - | Default project path |
-| `logFile` | string | "~/.claude-code-server/logs/server.log" | Log file path |
-| `pidFile` | string | "~/.claude-code-server/server.pid" | PID file path |
-| `dataDir` | string | "~/.claude-code-server/data" | Data storage directory |
+| `logFile` | string | "~/.nexus-bridge/logs/server.log" | Log file path |
+| `pidFile` | string | "~/.nexus-bridge/server.pid" | PID file path |
+| `dataDir` | string | "~/.nexus-bridge/data" | Data storage directory |
 | `sessionRetentionDays` | number | 30 | Session retention days |
 | `taskQueue.concurrency` | number | 3 | Task queue concurrency |
 | `taskQueue.defaultTimeout` | number | 300000 | Task timeout (milliseconds) |
@@ -482,7 +506,7 @@ node cli.js
 
 ### Configuration File Location
 
-Configuration file is automatically saved at: `~/.claude-code-server/config.json`
+Configuration file is automatically saved at: `~/.nexus-bridge/config.json`
 
 ## 🚀 Production Deployment
 
@@ -493,32 +517,32 @@ Configuration file is automatically saved at: `~/.claude-code-server/config.json
 npm install -g pm2
 
 # Start service
-pm2 start server.js --name claude-code-server
+pm2 start server.js --name nexus-bridge
 
 # Enable auto-start on boot
 pm2 startup
 pm2 save
 
 # View logs
-pm2 logs claude-code-server
+pm2 logs nexus-bridge
 
 # Restart service
-pm2 restart claude-code-server
+pm2 restart nexus-bridge
 ```
 
 ### Systemd Service
 
-Create `/etc/systemd/system/claude-code-server.service`:
+Create `/etc/systemd/system/nexus-bridge.service`:
 
 ```ini
 [Unit]
-Description=Claude Code Server
+Description=Nexus Bridge
 After=network.target
 
 [Service]
 Type=simple
 User=your-user
-WorkingDirectory=/path/to/claude-api-server
+WorkingDirectory=/path/to/nexus-bridge
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=10
@@ -531,8 +555,8 @@ Start service:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable claude-code-server
-sudo systemctl start claude-code-server
+sudo systemctl enable nexus-bridge
+sudo systemctl start nexus-bridge
 ```
 
 ## 🔧 Troubleshooting
@@ -544,10 +568,10 @@ sudo systemctl start claude-code-server
 lsof -i :5546
 
 # Check logs
-tail -f ~/.claude-code-server/logs/server.log
+tail -f ~/.nexus-bridge/logs/server.log
 
 # Check configuration
-cat ~/.claude-code-server/config.json
+cat ~/.nexus-bridge/config.json
 ```
 
 ### Task Stuck in Pending State
@@ -557,7 +581,7 @@ cat ~/.claude-code-server/config.json
 curl http://localhost:5546/api/tasks/queue/status
 
 # Check configured concurrency
-cat ~/.claude-code-server/config.json | grep concurrency
+cat ~/.nexus-bridge/config.json | grep concurrency
 ```
 
 ### Duplicate Log Output
@@ -575,7 +599,7 @@ node cli.js
 ## 📂 Project Structure
 
 ```
-claude-code-server/
+nexus-bridge/
 ├── server.js                 # Main server entry
 ├── cli.js                    # TUI management tool
 ├── package.json
@@ -608,7 +632,7 @@ claude-code-server/
 
 **Data and Configuration Files:**
 
-All configuration and data files are stored in `~/.claude-code-server/`:
+All configuration and data files are stored in `~/.nexus-bridge/`:
 - `config.json` - Configuration file
 - `logs/` - Log files directory
 - `server.pid` - Process ID file

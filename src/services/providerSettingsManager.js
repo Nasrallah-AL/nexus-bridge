@@ -11,7 +11,7 @@ const getLogger = require('../utils/logger');
  * When a session is executed, the corresponding settings file is symlinked to the project's .claude/ directory.
  *
  * Directory structure:
- * ~/.claude-code-server/provider/
+ * ~/.nexus-bridge/provider/
  * ├── max.json          <- Provider "max" settings (Claude settings.json format)
  * ├── zwl.json          <- Provider "zwl" settings
  * └── ...
@@ -19,7 +19,7 @@ const getLogger = require('../utils/logger');
  * Project directory (at runtime):
  * /path/to/project/
  * └── .claude/
- *     └── settings.json -> ~/.claude-code-server/provider/max.json
+ *     └── settings.json -> ~/.nexus-bridge/provider/max.json
  */
 class ProviderSettingsManager {
   /**
@@ -29,7 +29,7 @@ class ProviderSettingsManager {
    */
   constructor(config) {
     this.config = config;
-    this.baseDir = path.join(os.homedir(), '.claude-code-server');
+    this.baseDir = path.join(os.homedir(), '.nexus-bridge');
     this.providerDir = path.join(this.baseDir, 'provider');
     this.logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
 

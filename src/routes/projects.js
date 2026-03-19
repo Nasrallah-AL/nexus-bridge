@@ -1,5 +1,5 @@
 /**
- * 创建项目路由
+ * Create project routes.
  */
 function createProjectsRoutes(sessionStore, config, messageStore = null) {
   const router = require('express').Router();
@@ -64,7 +64,7 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
    *                       project_path:
    *                         type: string
    *                         description: Full project path
-   *                         example: "/home/user/.claude-code-server/workspace/my-project"
+   *                         example: "/home/user/.nexus-bridge/workspace/my-project"
    *                       relative_path:
    *                         type: string
    *                         description: Path relative to workspace
@@ -99,14 +99,14 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
    *             example:
    *               success: true
    *               projects:
-   *                 - project_path: "/home/user/.claude-code-server/workspace/my-project"
+   *                 - project_path: "/home/user/.nexus-bridge/workspace/my-project"
    *                   relative_path: "my-project"
    *                   session_count: 5
    *                   total_cost_usd: 2.45
    *                   messages_count: 42
    *                   last_activity: "2025-02-27T10:30:00.000Z"
    *                   created_at: "2025-02-20T10:30:00.000Z"
-   *                 - project_path: "/home/user/.claude-code-server/workspace/another-project"
+   *                 - project_path: "/home/user/.nexus-bridge/workspace/another-project"
    *                   relative_path: "another-project"
    *                   session_count: 2
    *                   total_cost_usd: 0.87
@@ -124,12 +124,12 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
    *               success: false
    *               error: "Failed to retrieve projects"
    */
-  // GET /api/projects - 列出历史项目
+  // GET /api/projects - List historical projects
   router.get('/', async (req, res) => {
     try {
       const sessions = await sessionStore.list();
 
-      // 按项目路径分组
+      // Group by project path
       const projectMap = new Map();
 
       for (const session of sessions) {
@@ -152,12 +152,12 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
         project.total_cost_usd += session.total_cost_usd || 0;
         project.messages_count += session.messages_count || 0;
 
-        // 更新最后活动时间
+        // Update the last activity time
         if (new Date(session.updated_at) > new Date(project.last_activity)) {
           project.last_activity = session.updated_at;
         }
 
-        // 更新最早创建时间
+        // Update the earliest creation time
         if (new Date(session.created_at) < new Date(project.created_at)) {
           project.created_at = session.created_at;
         }
@@ -165,7 +165,7 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
 
       let projects = Array.from(projectMap.values());
 
-      // 排序
+      // Sort the results
       const sortBy = req.query.sort_by || 'last_activity';
       const order = req.query.order || 'desc';
 
@@ -191,7 +191,7 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
         return order === 'asc' ? comparison : -comparison;
       });
 
-      // 分页
+      // Apply pagination
       const limit = req.query.limit ? parseInt(req.query.limit) : undefined;
       if (limit) {
         projects = projects.slice(0, limit);
@@ -274,10 +274,10 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
    *                 total_cost_usd: 15.67
    *                 total_messages: 342
    *                 most_expensive_project:
-   *                   project_path: "/home/user/.claude-code-server/workspace/my-project"
+   *                   project_path: "/home/user/.nexus-bridge/workspace/my-project"
    *                   total_cost_usd: 8.45
    *                 most_active_project:
-   *                   project_path: "/home/user/.claude-code-server/workspace/my-project"
+   *                   project_path: "/home/user/.nexus-bridge/workspace/my-project"
    *                   session_count: 12
    *       '500':
    *         description: Server error
@@ -308,7 +308,7 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
    *         required: true
    *         schema:
    *           type: string
-   *         example: "/home/user/.claude-code-server/workspace/my-project"
+   *         example: "/home/user/.nexus-bridge/workspace/my-project"
    *     responses:
    *       '200':
    *         description: Project deleted successfully
@@ -329,12 +329,12 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
    *                   example: 5
    *                 project_path:
    *                   type: string
-   *                   example: "/home/user/.claude-code-server/workspace/my-project"
+   *                   example: "/home/user/.nexus-bridge/workspace/my-project"
    *             example:
    *               success: true
    *               message: "Project deleted successfully"
    *               deleted_sessions: 5
-   *               project_path: "/home/user/.claude-code-server/workspace/my-project"
+   *               project_path: "/home/user/.nexus-bridge/workspace/my-project"
    *       '400':
    *         description: Invalid request
    *         content:
@@ -363,10 +363,10 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
    *               success: false
    *               error: "Failed to delete project"
    */
-  // DELETE /api/projects/:path* - 删除项目及其 sessions（不删除文件）
+  // DELETE /api/projects/:path* - Delete a project and its sessions (without deleting files)
   router.delete('/*', async (req, res) => {
     try {
-      // 获取项目路径（处理路径中的斜杠）
+      // Get the project path, including embedded slashes
       const projectPath = decodeURIComponent(req.params[0] || '');
 
       if (!projectPath) {
@@ -376,10 +376,10 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
         });
       }
 
-      // 获取所有 sessions
+      // Get all sessions
       const sessions = await sessionStore.list();
 
-      // 筛选该项目路径下的 sessions
+      // Filter sessions belonging to this project path
       const projectSessions = sessions.filter(
         session => (session.project_path || config.workspacePath) === projectPath
       );
@@ -392,7 +392,7 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
         });
       }
 
-      // 删除所有相关 sessions 和消息
+      // Delete all related sessions and messages
       let deletedCount = 0;
       let deletedMessages = 0;
       for (const session of projectSessions) {
@@ -400,7 +400,7 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
           await sessionStore.delete(session.id);
           deletedCount++;
 
-          // 删除消息文件
+          // Delete the message file
           if (messageStore) {
             try {
               await messageStore.deleteMessages(session.id);
@@ -429,12 +429,12 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
     }
   });
 
-  // GET /api/projects/stats - 获取项目统计
+  // GET /api/projects/stats - Get project statistics
   router.get('/stats', async (req, res) => {
     try {
       const sessions = await sessionStore.list();
 
-      // 按项目路径分组
+      // Group by project path
       const projectMap = new Map();
 
       for (const session of sessions) {
@@ -457,7 +457,7 @@ function createProjectsRoutes(sessionStore, config, messageStore = null) {
 
       const projects = Array.from(projectMap.values());
 
-      // 找出最贵和最活跃的项目
+      // Find the most expensive and most active projects
       let mostExpensive = null;
       let mostActive = null;
 

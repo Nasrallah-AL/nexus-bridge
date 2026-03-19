@@ -4,7 +4,7 @@ const getLogger = require('../utils/logger');
 const Validators = require('../utils/validators');
 
 /**
- * 会话管理服务
+ * Session management service.
  */
 class SessionManager {
   constructor(config, sessionStore, claudeExecutor, messageStore = null, providerRouter = null) {
@@ -17,7 +17,7 @@ class SessionManager {
   }
 
   /**
-   * 创建新会话
+   * Create a new session.
    */
   async createSession(sessionData) {
     const session = await this.sessionStore.create(sessionData);
@@ -26,7 +26,7 @@ class SessionManager {
   }
 
   /**
-   * 获取会话详情
+   * Get session details.
    */
   async getSession(sessionId) {
     const session = await this.sessionStore.get(sessionId);
@@ -37,7 +37,7 @@ class SessionManager {
   }
 
   /**
-   * 继续会话对话
+   * Continue a session conversation.
    */
   async continueSession(sessionId, options) {
     const session = await this.sessionStore.get(sessionId);
@@ -48,7 +48,7 @@ class SessionManager {
       };
     }
 
-    // 检查会话状态
+    // Check the session status.
     if (session.status !== 'active') {
       return {
         success: false,
@@ -56,7 +56,7 @@ class SessionManager {
       };
     }
 
-    // 验证并解析项目路径（处理可能存储了错误路径的旧 session）
+    // Validate and resolve the project path, including legacy sessions with bad paths.
     const pathValidation = Validators.validateProjectPath(
       session.project_path,
       this.config.workspacePath
@@ -69,7 +69,7 @@ class SessionManager {
       };
     }
 
-    // 先保存用户消息（在执行前）
+    // Save the user message before execution.
     if (this.messageStore && sessionId) {
       try {
         await this.messageStore.addMessage(sessionId, {
@@ -83,7 +83,7 @@ class SessionManager {
         });
         this.logger.debug(`User message saved for session`, { session_id: sessionId });
       } catch (msgErr) {
-        // 消息存储失败不影响主流程
+        // Message storage failures should not interrupt the main flow.
         this.logger.warn(`Failed to save user message for session`, {
           session_id: sessionId,
           error: msgErr.message,
@@ -91,10 +91,10 @@ class SessionManager {
       }
     }
 
-    // 使用会话的配置执行 Claude
+    // Execute Claude using the session configuration.
     const result = await this.claudeExecutor.execute({
       prompt: options.prompt,
-      projectPath: pathValidation.fullPath,  // 使用解析后的完整路径
+      projectPath: pathValidation.fullPath,  // Use the resolved full path.
       model: options.model || session.model,
       sessionId: session.id,
       systemPrompt: options.systemPrompt,
@@ -110,7 +110,7 @@ class SessionManager {
   }
 
   /**
-   * 列出会话
+   * List sessions.
    */
   async listSessions(options = {}) {
     const sessions = await this.sessionStore.list(options);
@@ -118,7 +118,7 @@ class SessionManager {
   }
 
   /**
-   * 搜索会话
+   * Search sessions.
    */
   async searchSessions(query, options = {}) {
     const sessions = await this.sessionStore.search(query, options);
@@ -126,12 +126,12 @@ class SessionManager {
   }
 
   /**
-   * 删除会话
+   * Delete a session.
    */
   async deleteSession(sessionId) {
     const deleted = await this.sessionStore.delete(sessionId);
     if (deleted) {
-      // 同时删除消息文件
+      // Delete the session message file as well.
       if (this.messageStore) {
         try {
           await this.messageStore.deleteMessages(sessionId);
@@ -150,7 +150,7 @@ class SessionManager {
   }
 
   /**
-   * 更新会话状态
+   * Update the session status.
    */
   async updateSessionStatus(sessionId, status) {
     const session = await this.sessionStore.update(sessionId, { status });
@@ -162,7 +162,7 @@ class SessionManager {
   }
 
   /**
-   * 获取会话统计
+   * Get session statistics.
    */
   async getSessionStats(sessionId) {
     const session = await this.sessionStore.get(sessionId);
@@ -183,7 +183,7 @@ class SessionManager {
   }
 
   /**
-   * 清理过期会话
+   * Clean up expired sessions.
    */
   async cleanupExpiredSessions() {
     const retentionDays = this.config.sessionRetentionDays || 30;

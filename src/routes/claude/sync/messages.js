@@ -53,11 +53,11 @@ const { ensureSession } = require('../common/session');
  */
 function createMessagesRoute(claudeExecutor, config, sessionManager, providerRouter) {
   router.post('/', async (req, res) => {
-    // 使用公共验证逻辑
+    // Use the shared validation logic.
     const validated = validateAndParseRequest(req, res, config);
-    if (!validated) return; // 验证失败，响应已发送
+    if (!validated) return; // Validation failed and the response has already been sent.
 
-    // 流式输出暂不支持
+    // Streaming is not supported here yet.
     if (validated.stream) {
       return res.status(501).json({
         success: false,
@@ -65,7 +65,7 @@ function createMessagesRoute(claudeExecutor, config, sessionManager, providerRou
       });
     }
 
-    // 确保 Session 存在
+    // Ensure the session exists.
     const sessionId = await ensureSession(
       sessionManager,
       validated.sessionId,
@@ -74,7 +74,7 @@ function createMessagesRoute(claudeExecutor, config, sessionManager, providerRou
       config
     );
 
-    // 先保存用户消息（在执行前）
+    // Save the user message before execution.
     if (sessionManager?.messageStore && sessionId) {
       try {
         await sessionManager.messageStore.addMessage(sessionId, {
@@ -87,7 +87,7 @@ function createMessagesRoute(claudeExecutor, config, sessionManager, providerRou
           },
         });
       } catch (msgErr) {
-        // 消息存储失败不影响主流程
+        // Message storage failures should not interrupt the main flow.
         console.error('Failed to save user message:', msgErr.message);
       }
     }
@@ -95,7 +95,7 @@ function createMessagesRoute(claudeExecutor, config, sessionManager, providerRou
     // Select provider for load balancing
     const provider = providerRouter ? providerRouter.select(sessionId) : null;
 
-    // 同步执行
+    // Execute synchronously.
     const result = await claudeExecutor.execute({
       prompt: validated.prompt,
       projectPath: validated.projectPath,
@@ -120,7 +120,7 @@ function createMessagesRoute(claudeExecutor, config, sessionManager, providerRou
         : providerRouter.recordFailure(provider.id);
     }
 
-    // 返回结果（包含 session_id）
+    // Return the result, including the session_id.
     const statusCode = result.success ? 200 : 500;
     const responseData = result.success ? {
       ...result,

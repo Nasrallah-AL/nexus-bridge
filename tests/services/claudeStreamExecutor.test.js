@@ -317,6 +317,42 @@ describe('ClaudeStreamExecutor', () => {
       );
     });
 
+    test('should honor legacy nvmBin when nodeBinDir is not configured', () => {
+      const executorWithLegacyConfig = new ClaudeStreamExecutor(
+        {
+          ...mockConfig,
+          nodeBinDir: null,
+          nvmBin: '/Users/test/.nvm/versions/node/v24/bin',
+          claudePath: 'claude',
+        },
+        mockSessionStore,
+        mockStatsStore,
+        mockMessageStore,
+        mockStreamManager
+      );
+
+      const args = ['-p', 'Hello', '--output-format', 'stream-json'];
+
+      executorWithLegacyConfig.spawnStreamCommand(
+        '/tmp/test',
+        args,
+        mockRes,
+        Date.now(),
+        'session-123',
+        'claude-3-sonnet-20240229',
+        'stream_abc123',
+        'streaming_msg_123'
+      );
+
+      const spawnOptions = mockSpawn.mock.calls[0][2];
+      expect(spawnOptions.env.PATH.split(require('path').delimiter)).toEqual(
+        expect.arrayContaining([
+          '/Users/test/.nvm/versions/node/v24/bin',
+          require('path').join(require('os').homedir(), '.local', 'bin'),
+        ])
+      );
+    });
+
     test('should add client to streamManager', () => {
       const args = ['-p', 'Hello', '--output-format', 'stream-json'];
 

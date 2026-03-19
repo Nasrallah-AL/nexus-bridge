@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Code Server is an HTTP API wrapper for the Anthropic Claude CLI. It provides enterprise-level features including session management, async task queues, statistics monitoring, webhook callbacks, and a TUI management tool.
+Nexus Bridge is an HTTP API wrapper for the Anthropic Claude CLI. It provides enterprise-level features including session management, async task queues, statistics monitoring, webhook callbacks, and a TUI management tool.
 
 **Tech Stack:** Node.js (>=18), Express, LowDB (JSON file storage), blessed (TUI)
 
@@ -53,14 +53,14 @@ curl -X POST http://localhost:5546/api/async/messages \
 
 ## Configuration
 
-Configuration is stored at `~/.claude-code-server/config.json` (auto-generated on first run).
+Configuration is stored at `~/.nexus-bridge/config.json` (auto-generated on first run).
 
 Key configuration options:
 - `port`: Server port (default: 5546)
 - `claudePath`: Path to Claude CLI executable
 - `nvmBin`: NVM bin directory (for PATH setup)
 - `defaultProjectPath`: Default workspace for Claude operations
-- `logFile`, `pidFile`, `dataDir`: File paths for logs, PID, and data (all in `~/.claude-code-server/`)
+- `logFile`, `pidFile`, `dataDir`: File paths for logs, PID, and data (all in `~/.nexus-bridge/`)
 - `taskQueue.concurrency`: Concurrent task limit (default: 3)
 - `logFile`, `pidFile`, `dataDir`: File paths for logs, PID, and data
 - `rateLimit`, `webhook`, `statistics`, `mcp`: Feature toggles
@@ -171,7 +171,7 @@ On server restart, `processing` tasks are reset to `pending`
 
 ## File Locations
 
-- Config: `~/.claude-code-server/config.json`
-- Logs: `~/.claude-code-server/logs/server.log`
-- PID file: `~/.claude-code-server/server.pid`
+- Config: `~/.nexus-bridge/config.json`
+- Logs: `~/.nexus-bridge/logs/server.log`
+- PID file: `~/.nexus-bridge/server.pid`
 - Data: `./data/` (sessions, tasks, statistics JSON files)

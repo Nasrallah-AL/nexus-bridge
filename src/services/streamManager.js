@@ -2,8 +2,8 @@ const crypto = require('crypto');
 const getLogger = require('../utils/logger');
 
 /**
- * 流式任务管理器
- * 管理活跃的流式任务，支持断线重连和多客户端监听
+ * Streaming task manager.
+ * Tracks active streaming tasks and supports reconnection and multiple clients.
  */
 class StreamManager {
   constructor(config = {}) {
@@ -13,16 +13,16 @@ class StreamManager {
   }
 
   /**
-   * 生成 stream_id
+   * Generate a stream_id.
    */
   generateStreamId() {
     return `stream_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
   }
 
   /**
-   * 注册新的流式任务
+   * Register a new streaming task.
    * @param {string} sessionId - Session ID
-   * @param {ChildProcess} childProcess - Claude CLI 子进程
+   * @param {ChildProcess} childProcess - Claude CLI child process
    * @param {string} streamId - Optional stream ID (generated if not provided)
    * @returns {string} stream_id
    */
@@ -46,14 +46,14 @@ class StreamManager {
   }
 
   /**
-   * 获取流式任务
+   * Get a streaming task.
    */
   getStream(streamId) {
     return this.activeStreams.get(streamId);
   }
 
   /**
-   * 通过 session_id 获取活跃的流式任务
+   * Get the active streaming task for a session_id.
    */
   getStreamBySession(sessionId) {
     for (const [, stream] of this.activeStreams) {
@@ -65,7 +65,7 @@ class StreamManager {
   }
 
   /**
-   * 更新流式任务内容
+   * Update the accumulated content for a stream.
    */
   updateContent(streamId, chunk) {
     const stream = this.activeStreams.get(streamId);
@@ -75,7 +75,7 @@ class StreamManager {
   }
 
   /**
-   * 标记流式任务完成
+   * Mark a streaming task as completed.
    */
   completeStream(streamId, metadata = {}) {
     const stream = this.activeStreams.get(streamId);
@@ -92,7 +92,7 @@ class StreamManager {
   }
 
   /**
-   * 添加 SSE 客户端
+   * Add an SSE client.
    */
   addClient(streamId, res) {
     const stream = this.activeStreams.get(streamId);
@@ -106,7 +106,7 @@ class StreamManager {
   }
 
   /**
-   * 移除 SSE 客户端
+   * Remove an SSE client.
    */
   removeClient(streamId, res) {
     const stream = this.activeStreams.get(streamId);
@@ -123,7 +123,7 @@ class StreamManager {
   }
 
   /**
-   * 广播 SSE 事件到所有客户端
+   * Broadcast an SSE event to all clients.
    */
   broadcast(streamId, eventType, data) {
     const stream = this.activeStreams.get(streamId);
@@ -142,7 +142,7 @@ class StreamManager {
   }
 
   /**
-   * 终止流式任务
+   * Terminate a streaming task.
    */
   killStream(streamId) {
     const stream = this.activeStreams.get(streamId);
@@ -156,8 +156,8 @@ class StreamManager {
   }
 
   /**
-   * 清理已完成的流式任务（释放内存）
-   * @param {number} maxAgeMs - 最大保留时间（毫秒）
+   * Clean up completed streams to free memory.
+   * @param {number} maxAgeMs - Maximum retention time in milliseconds
    */
   cleanupCompletedStreams(maxAgeMs = 3600000) {
     const now = Date.now();

@@ -2,10 +2,11 @@ const { spawn } = require('child_process');
 const os = require('os');
 const getLogger = require('../utils/logger');
 const { injectProviderEnv, getSafeProviderInfo, getEnvStatus } = require('../utils/providerEnv');
+const { buildCommandEnv, getEffectiveNodeBinDir } = require('../utils/runtimePaths');
 
 /**
- * Claude 流式执行器
- * 使用 --output-format stream-json 输出 SSE 事件流
+ * Claude streaming executor.
+ * Uses `--output-format stream-json` to emit an SSE event stream.
  */
 class ClaudeStreamExecutor {
   constructor(config, sessionStore = null, statsStore = null, messageStore = null, streamManager = null, providerRouter = null) {
@@ -19,7 +20,7 @@ class ClaudeStreamExecutor {
   }
 
   /**
-   * 设置 SSE 响应头
+   * Set SSE response headers.
    */
   setupSSEResponse(res, sessionId, streamId = null) {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -29,11 +30,11 @@ class ClaudeStreamExecutor {
     if (streamId) {
       res.setHeader('X-Stream-Id', streamId);
     }
-    res.flushHeaders(); // 立即发送headers
+    res.flushHeaders(); // Send headers immediately.
   }
 
   /**
-   * 发送 SSE 事件
+   * Send an SSE event.
    */
   sendSSEEvent(res, eventType, data) {
     const eventData = typeof data === 'string' ? data : JSON.stringify(data);
@@ -42,7 +43,7 @@ class ClaudeStreamExecutor {
   }
 
   /**
-   * 发送错误事件并关闭连接
+   * Send an error event and close the connection.
    */
   sendSSEError(res, message, details = null) {
     this.sendSSEEvent(res, 'error', {
@@ -53,7 +54,7 @@ class ClaudeStreamExecutor {
   }
 
   /**
-   * 发送完成事件并关闭连接
+   * Send a completion event and close the connection.
    */
   sendSSEDone(res, data) {
     this.sendSSEEvent(res, 'done', data);
@@ -61,7 +62,7 @@ class ClaudeStreamExecutor {
   }
 
   /**
-   * 构建流式命令参数
+   * Build command arguments for streaming execution.
    */
   buildStreamCommandArgs(options) {
     const {
@@ -76,7 +77,7 @@ class ClaudeStreamExecutor {
       permissionMode,
     } = options;
 
-    // 关键：使用 stream-json 格式
+    // Key requirement: use the stream-json format
     const args = [
       '-p', prompt,
       '--output-format', 'stream-json',
@@ -84,12 +85,12 @@ class ClaudeStreamExecutor {
       '--verbose'
     ];
 
-    // 添加模型
+    // Add the model
     if (model) {
       args.push('--model', model);
     }
 
-    // 会话处理：流式必须使用已存在的会话
+    // Session handling: streaming must use an existing session
     if (sessionId) {
       if (sessionExists) {
         args.push('--resume', sessionId);
@@ -98,17 +99,17 @@ class ClaudeStreamExecutor {
       }
     }
 
-    // 系统提示
+    // System prompt
     if (systemPrompt) {
       args.push('--system-prompt', systemPrompt);
     }
 
-    // 预算限制
+    // Budget limit
     if (maxBudgetUsd) {
       args.push('--max-budget-usd', maxBudgetUsd.toString());
     }
 
-    // 工具限制
+    // Tool restrictions
     if (allowedTools && allowedTools.length > 0) {
       args.push('--allowed-tools', allowedTools.join(','));
     }
@@ -117,18 +118,18 @@ class ClaudeStreamExecutor {
       args.push('--disallowed-tools', disallowedTools.join(','));
     }
 
-    // MCP 配置
+    // MCP configuration
     if (this.config.mcp?.enabled && this.config.mcp?.configPath) {
       args.push('--mcp-config', this.config.mcp.configPath);
     }
 
-    // 添加 permission-mode 参数
+    // Add the permission-mode argument
     if (permissionMode) {
       args.push('--permission-mode', permissionMode);
       this.logger.info(`Using permission mode: ${permissionMode}`);
     }
 
-    // 权限跳过
+    // Permission bypass
     if (this.config.allowDangerouslySkipPermissions === true) {
       args.push('--dangerously-skip-permissions');
     }
@@ -137,7 +138,7 @@ class ClaudeStreamExecutor {
   }
 
   /**
-   * 执行流式命令
+   * Execute a streaming command.
    */
   async executeStream(options, res) {
     const {
@@ -154,9 +155,9 @@ class ClaudeStreamExecutor {
     } = options;
 
     const startTime = Date.now();
-    const timings = {}; // 记录各步骤耗时
+    const timings = {}; // Record the duration of each step.
 
-    // ========== 步骤1：参数验证和Provider选择 ==========
+    // ========== Step 1: validate parameters and select a provider ==========
     const step1Start = Date.now();
     this.logger.info(`[Step 1/5] Starting stream execution`, {
       session_id: sessionId,
@@ -183,7 +184,7 @@ class ClaudeStreamExecutor {
     }
     timings.step1_provider_select = Date.now() - step1Start;
 
-    // ========== 步骤2：检查会话状态和预算 ==========
+    // ========== Step 2: check session state and budget ==========
     const step2Start = Date.now();
     let sessionExists = false;
     if (sessionId && this.sessionStore) {
@@ -203,7 +204,7 @@ class ClaudeStreamExecutor {
     }
     timings.step2_session_check = Date.now() - step2Start;
 
-    // ========== 步骤3：设置Provider配置（symlink方式） ==========
+    // ========== Step 3: configure the provider (symlink approach) ==========
     const step3Start = Date.now();
 
     // Setup provider settings symlink in project directory
@@ -219,7 +220,7 @@ class ClaudeStreamExecutor {
       }
     }
 
-    // 生成 streamId 和创建流式消息（如果 streamManager 可用）
+    // Generate streamId and create the streaming message when streamManager is available
     let streamId = null;
     let streamingMessageId = null;
     if (this.streamManager && this.messageStore && sessionId) {
@@ -240,17 +241,17 @@ class ClaudeStreamExecutor {
           session_id: sessionId,
           error: err.message,
         });
-        // 流式消息创建失败不影响主流程，继续执行但不支持续传
+        // A streaming message creation failure should not block the main flow; continue without resume support
         streamId = null;
         streamingMessageId = null;
       }
     }
     timings.step3_setup = Date.now() - step3Start;
 
-    // 设置 SSE 响应头
+    // Set SSE response headers
     this.setupSSEResponse(res, sessionId, streamId);
 
-    // 预算检查
+    // Budget check
     if (sessionId && maxBudgetUsd && this.sessionStore) {
       const session = await this.sessionStore.get(sessionId);
       if (session && session.total_cost_usd >= maxBudgetUsd) {
@@ -262,7 +263,7 @@ class ClaudeStreamExecutor {
       }
     }
 
-    // 确保项目目录存在
+    // Ensure the project directory exists
     const fs = require('fs');
     if (!fs.existsSync(projectPath)) {
       try {
@@ -273,7 +274,7 @@ class ClaudeStreamExecutor {
       }
     }
 
-    // 先保存用户消息（在执行前，记录正确的发送时间）
+    // Save the user message before execution so the send time is accurate
     if (this.messageStore && sessionId) {
       try {
         await this.messageStore.addMessage(sessionId, {
@@ -283,7 +284,7 @@ class ClaudeStreamExecutor {
         });
         this.logger.debug(`User message saved for stream session`, { session_id: sessionId });
       } catch (msgErr) {
-        // 消息存储失败不影响主流程
+        // Message storage failures should not interrupt the main flow
         this.logger.warn(`Failed to save user message for stream session`, {
           session_id: sessionId,
           error: msgErr.message,
@@ -291,7 +292,7 @@ class ClaudeStreamExecutor {
       }
     }
 
-    // 构建命令参数
+    // Build command arguments
     const args = this.buildStreamCommandArgs({
       prompt,
       model,
@@ -311,23 +312,20 @@ class ClaudeStreamExecutor {
       stream_id: streamId,
     });
 
-    // 执行流式命令
+    // Execute the streaming command
     this.spawnStreamCommand(projectPath, args, res, Date.now(), sessionId, model, streamId, streamingMessageId, provider);
   }
 
   /**
-   * 生成流式命令并处理输出
+   * Spawn the streaming command and process its output.
    */
   spawnStreamCommand(projectPath, args, res, startTime, sessionId, model, streamId = null, streamingMessageId = null, provider = null) {
     const fs = require('fs');
     const os = require('os');
     const path = require('path');
 
-    const env = { ...process.env };
-
-    if (this.config.nodeBinDir) {
-      env.PATH = `${this.config.nodeBinDir}:${env.PATH}`;
-    }
+    const env = buildCommandEnv(this.config, process.env);
+    const effectiveNodeBinDir = getEffectiveNodeBinDir(this.config);
 
     // Create session-specific HOME directory to isolate from local ~/.claude/settings.json
     // This ensures provider environment variables take precedence
@@ -407,6 +405,7 @@ class ClaudeStreamExecutor {
       CLAUDECODE_unset: true,
       session_id: sessionId,
       stream_id: streamId,
+      node_bin_dir: effectiveNodeBinDir || 'not configured',
     });
 
     // Inject Provider environment variables for load balancing
@@ -418,7 +417,7 @@ class ClaudeStreamExecutor {
       this.logger.warn(`No provider selected for stream, using system env vars`);
     }
 
-    const child = spawn(this.config.claudePath, args, {
+    const child = spawn(this.config.claudePath || 'claude', args, {
       cwd: projectPath,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -427,16 +426,16 @@ class ClaudeStreamExecutor {
     let buffer = '';
     let totalCost = 0;
     let lastResult = null;
-    // 收集 assistant 消息内容（包括 thinking）
+    // Collect assistant message content, including thinking blocks
     let assistantContent = [];
     let thinkingContent = '';
-    // 从 message_start 事件中获取实际使用的模型
+    // Read the actual model from the message_start event
     let actualModel = model;
-    // 跟踪原始客户端是否已断开
+    // Track whether the original client has disconnected
     let clientDisconnected = false;
     // Flag to prevent double cleanup of session directory
     let sessionHomeCleaned = false;
-    // 收集 stderr 输出用于错误诊断
+    // Collect stderr output for diagnostics
     let stderrOutput = '';
 
     // Helper to cleanup session directory safely
@@ -468,17 +467,17 @@ class ClaudeStreamExecutor {
       }
     };
 
-    // 如果有 streamManager，注册流并添加客户端
+    // Register the stream and add the client when streamManager is available
     if (streamId && this.streamManager) {
       this.streamManager.registerStream(sessionId, child, streamId);
       this.streamManager.addClient(streamId, res);
     }
 
-    // 处理客户端断开连接
+    // Handle client disconnects
     res.on('close', () => {
       clientDisconnected = true;
 
-      // 如果有 streamManager，只移除客户端，不终止进程
+      // When streamManager is available, only remove the client and keep the process running
       if (streamId && this.streamManager) {
         this.logger.info(`Client disconnected, removing from stream (process continues)`, {
           session_id: sessionId,
@@ -486,38 +485,38 @@ class ClaudeStreamExecutor {
         });
         this.streamManager.removeClient(streamId, res);
       } else {
-        // 旧行为：终止进程
+        // Legacy behavior: terminate the process
         this.logger.info(`Client disconnected, killing Claude process`, { session_id: sessionId });
         child.kill('SIGTERM');
       }
     });
 
-    // 处理 stdout - JSONL 格式
+    // Process stdout in JSONL format.
     child.stdout.on('data', (data) => {
       buffer += data.toString();
       const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // 保留未完成的行
+      buffer = lines.pop() || ''; // Keep any incomplete line in the buffer.
 
       for (const line of lines) {
         if (line.trim()) {
           try {
             const json = JSON.parse(line);
 
-            // 如果有 streamManager，广播到所有客户端（包括初始客户端）
+            // Broadcast to all clients when streamManager is available, including the initial client
             if (streamId && this.streamManager) {
               this.streamManager.broadcast(streamId, 'message', json);
             } else if (!clientDisconnected) {
-              // 没有 streamManager 时，直接发送给初始客户端
+              // Without streamManager, send directly to the initial client
               this.sendSSEEvent(res, 'message', json);
             }
 
-            // 从 message_start 事件中提取实际使用的模型
+            // Extract the actual model used from the message_start event
             if (json.type === 'stream_event' && json.event?.type === 'message_start' && json.event?.message?.model) {
               actualModel = json.event.message.model;
               this.logger.debug(`Actual model from message_start`, { model: actualModel });
             }
 
-            // 收集 assistant 消息（包括 thinking）
+            // Collect assistant messages, including thinking content
             if (json.type === 'assistant' && json.message?.content) {
               for (const block of json.message.content) {
                 if (block.type === 'thinking' && block.thinking) {
@@ -525,7 +524,7 @@ class ClaudeStreamExecutor {
                 } else if (block.type === 'text' && block.text) {
                   assistantContent.push({ type: 'text', text: block.text });
 
-                  // 更新流式消息内容
+                  // Update the streaming message content
                   if (streamingMessageId && this.messageStore && sessionId) {
                     this.messageStore.updateStreamingContent(sessionId, streamingMessageId, block.text).catch(err => {
                       this.logger.warn(`Failed to update streaming content`, {
@@ -539,11 +538,11 @@ class ClaudeStreamExecutor {
               }
             }
 
-            // 如果是结果事件，记录成本和最终回复
+            // If this is a result event, record the cost and final reply
             if (json.type === 'result') {
               lastResult = json;
               totalCost = json.total_cost_usd || 0;
-              // 最终结果中的 result 字段是完整回复
+              // The result field in the final event contains the full reply
               if (json.result) {
                 assistantContent = [{ type: 'result', text: json.result }];
               }
@@ -558,7 +557,7 @@ class ClaudeStreamExecutor {
       }
     });
 
-    // 处理 stderr
+    // Process stderr
     child.stderr.on('data', (data) => {
       const stderrText = data.toString();
       stderrOutput += stderrText;
@@ -568,14 +567,14 @@ class ClaudeStreamExecutor {
       });
     });
 
-    // 超时处理
+    // Timeout handling
     const timeout = setTimeout(() => {
       this.logger.warn(`Stream timeout, killing process`, { session_id: sessionId });
       child.kill('SIGTERM');
       this.sendSSEError(res, 'Stream timeout (300s)');
     }, 300000);
 
-    // 进程结束处理
+    // Process exit handling
     child.on('close', async (code) => {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
@@ -583,7 +582,7 @@ class ClaudeStreamExecutor {
       // Cleanup temporary HOME directory (safe - uses flag)
       cleanupSessionHome();
 
-      // 完成流式任务（如果有 streamManager）
+      // Complete the streaming task when streamManager is available
       if (streamId && this.streamManager) {
         this.streamManager.completeStream(streamId, {
           cost_usd: totalCost,
@@ -592,7 +591,7 @@ class ClaudeStreamExecutor {
         });
       }
 
-      // 完成流式消息（如果有 streamingMessageId）
+      // Complete the streaming message when streamingMessageId is available
       if (streamingMessageId && this.messageStore && sessionId) {
         try {
           await this.messageStore.completeStreamingMessage(sessionId, streamingMessageId, {
@@ -623,13 +622,13 @@ class ClaudeStreamExecutor {
         return;
       }
 
-      // 存储助手消息到 messageStore（用户消息已在执行前保存）
+      // Store the assistant message in messageStore (the user message was already saved before execution)
       await this.saveMessages(sessionId, thinkingContent, assistantContent, lastResult, actualModel);
 
-      // 更新会话统计
+      // Update session statistics
       await this.updateSessionStats(sessionId, totalCost, duration);
 
-      // 发送完成事件
+      // Send the completion event
       this.sendSSEDone(res, {
         session_id: sessionId,
         duration_ms: duration,
@@ -643,7 +642,7 @@ class ClaudeStreamExecutor {
       });
     });
 
-    // 进程错误处理
+    // Process error handling
     child.on('error', (err) => {
       clearTimeout(timeout);
 
@@ -659,7 +658,7 @@ class ClaudeStreamExecutor {
   }
 
   /**
-   * 更新会话统计
+   * Update session statistics.
    */
   async updateSessionStats(sessionId, costUsd, durationMs) {
     if (!this.sessionStore || !sessionId) return;
@@ -683,41 +682,41 @@ class ClaudeStreamExecutor {
   }
 
   /**
-   * 保存助手消息到 messageStore
-   * 注意：用户消息已在执行前保存，这里只保存助手回复
-   * @param {string} sessionId - 会话 ID
-   * @param {string} thinkingContent - 思考内容
-   * @param {Array} assistantContent - 助手回复内容
-   * @param {object} lastResult - 最终结果对象
-   * @param {string} model - 使用的模型
+   * Save the assistant message to messageStore.
+   * Note: the user message is already saved before execution; this stores only the assistant reply.
+   * @param {string} sessionId - Session ID
+   * @param {string} thinkingContent - Thinking content
+   * @param {Array} assistantContent - Assistant reply content
+   * @param {object} lastResult - Final result object
+   * @param {string} model - Model used
    */
   async saveMessages(sessionId, thinkingContent, assistantContent, lastResult, model) {
     if (!this.messageStore || !sessionId) return;
 
     try {
-      // 构建助手消息内容
+      // Build the assistant message content
       let assistantText = '';
       const metadata = {
         model: model || this.config.defaultModel,
       };
 
-      // 如果有最终结果，优先使用
+      // Prefer the final result when it is available
       if (lastResult?.result) {
         assistantText = lastResult.result;
         metadata.cost_usd = lastResult.total_cost_usd;
         metadata.duration_ms = lastResult.duration_ms;
         metadata.model_usage = lastResult.modelUsage;
       } else if (assistantContent.length > 0) {
-        // 否则拼接收集到的内容
+        // Otherwise, concatenate the collected content
         assistantText = assistantContent.map(c => c.text).join('\n');
       }
 
-      // 添加思考内容到元数据
+      // Add thinking content to metadata
       if (thinkingContent) {
         metadata.thinking = thinkingContent;
       }
 
-      // 只保存助手消息（用户消息已在执行前保存）
+      // Save only the assistant message (the user message was already saved before execution)
       await this.messageStore.addMessage(sessionId, {
         role: 'assistant',
         content: assistantText,

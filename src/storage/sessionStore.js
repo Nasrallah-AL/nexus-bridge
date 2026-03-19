@@ -1,7 +1,7 @@
 const BaseStore = require('./baseStore');
 
 /**
- * 会话存储
+ * Session storage.
  */
 class SessionStore extends BaseStore {
   constructor(dataDir = './data/sessions') {
@@ -9,14 +9,14 @@ class SessionStore extends BaseStore {
   }
 
   /**
-   * 获取默认数据结构
+   * Get the default data structure.
    */
   getDefaultData() {
     return { sessions: [] };
   }
 
   /**
-   * 创建会话
+   * Create a session.
    */
   async create(sessionData) {
     return this.withLock(async () => {
@@ -38,7 +38,7 @@ class SessionStore extends BaseStore {
   }
 
   /**
-   * 获取会话
+   * Get a session.
    */
   async get(sessionId) {
     await this.db.read();
@@ -46,7 +46,7 @@ class SessionStore extends BaseStore {
   }
 
   /**
-   * 更新会话
+   * Update a session.
    */
   async update(sessionId, updates) {
     return this.withLock(async () => {
@@ -55,7 +55,7 @@ class SessionStore extends BaseStore {
         return null;
       }
 
-      // 合并更新
+      // Merge updates
       this.db.data.sessions[index] = {
         ...this.db.data.sessions[index],
         ...updates,
@@ -67,7 +67,7 @@ class SessionStore extends BaseStore {
   }
 
   /**
-   * 删除会话
+   * Delete a session.
    */
   async delete(sessionId) {
     return this.withLock(async () => {
@@ -82,14 +82,14 @@ class SessionStore extends BaseStore {
   }
 
   /**
-   * 列出所有会话
+   * List all sessions.
    */
   async list(options = {}) {
     await this.db.read();
 
     let sessions = this.db.data.sessions;
 
-    // 过滤条件
+    // Apply filters
     if (options.status) {
       sessions = sessions.filter(s => s.status === options.status);
     }
@@ -98,10 +98,10 @@ class SessionStore extends BaseStore {
       sessions = sessions.filter(s => s.project_path === options.project_path);
     }
 
-    // 排序
+    // Sort the results
     sessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
-    // 分页
+    // Apply pagination
     if (options.limit) {
       sessions = sessions.slice(0, options.limit);
     }
@@ -110,7 +110,7 @@ class SessionStore extends BaseStore {
   }
 
   /**
-   * 搜索会话
+   * Search sessions.
    */
   async search(query, options = {}) {
     await this.db.read();
@@ -121,10 +121,10 @@ class SessionStore extends BaseStore {
       (s.metadata && JSON.stringify(s.metadata).toLowerCase().includes(lowerQuery))
     );
 
-    // 排序
+    // Sort the results
     sessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
-    // 分页
+    // Apply pagination
     if (options.limit) {
       sessions = sessions.slice(0, options.limit);
     }
@@ -133,7 +133,7 @@ class SessionStore extends BaseStore {
   }
 
   /**
-   * 清理过期会话
+   * Clean up expired sessions.
    */
   async cleanup(retentionDays) {
     return this.withLock(async () => {
@@ -151,7 +151,7 @@ class SessionStore extends BaseStore {
   }
 
   /**
-   * 增加消息计数
+   * Increment the message count.
    */
   async incrementMessages(sessionId) {
     return this.withLock(async () => {
@@ -168,7 +168,7 @@ class SessionStore extends BaseStore {
   }
 
   /**
-   * 增加花费
+   * Add cost.
    */
   async addCost(sessionId, costUsd) {
     return this.withLock(async () => {

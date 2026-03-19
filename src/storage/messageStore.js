@@ -3,8 +3,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 /**
- * 消息存储类
- * 每个 session 一个独立文件: messages/{session_id}.json
+ * Message storage class.
+ * Each session uses a dedicated file: messages/{session_id}.json
  */
 class MessageStore {
   constructor(dataDir = './data/messages') {
@@ -12,7 +12,7 @@ class MessageStore {
   }
 
   /**
-   * 初始化存储目录
+   * Initialize the storage directory.
    */
   async init() {
     if (!fs.existsSync(this.dataDir)) {
@@ -21,28 +21,28 @@ class MessageStore {
   }
 
   /**
-   * 获取 session 消息文件路径
+   * Get the path for a session message file.
    */
   getFilePath(sessionId) {
     return path.join(this.dataDir, `${sessionId}.json`);
   }
 
   /**
-   * 生成消息 ID
+   * Generate a message ID.
    */
   generateId() {
     return `msg_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
   }
 
   /**
-   * 获取当前时间戳
+   * Get the current timestamp.
    */
   now() {
     return new Date().toISOString();
   }
 
   /**
-   * 读取 session 的消息文件
+   * Read the message file for a session.
    */
   async readSessionMessages(sessionId) {
     const filePath = this.getFilePath(sessionId);
@@ -71,12 +71,12 @@ class MessageStore {
   }
 
   /**
-   * 写入 session 的消息文件
+   * Write the message file for a session.
    */
   async writeSessionMessages(sessionId, data) {
     const filePath = this.getFilePath(sessionId);
 
-    // 确保目录存在
+    // Ensure the directory exists.
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -86,12 +86,12 @@ class MessageStore {
   }
 
   /**
-   * 添加消息
+   * Add a message.
    * @param {string} sessionId - Session ID
-   * @param {object} message - 消息对象
-   * @param {string} message.role - user 或 assistant
-   * @param {string} message.content - 消息内容
-   * @param {object} message.metadata - 元数据
+   * @param {object} message - Message object
+   * @param {string} message.role - user or assistant
+   * @param {string} message.content - Message content
+   * @param {object} message.metadata - Metadata
    */
   async addMessage(sessionId, message) {
     const data = await this.readSessionMessages(sessionId);
@@ -115,16 +115,16 @@ class MessageStore {
   }
 
   /**
-   * 批量添加消息（用户消息 + AI 回复）
+   * Add a user/assistant message pair in one operation.
    * @param {string} sessionId - Session ID
-   * @param {object} userMessage - 用户消息
-   * @param {object} assistantMessage - AI 回复消息
+   * @param {object} userMessage - User message
+   * @param {object} assistantMessage - Assistant reply message
    */
   async addExchange(sessionId, userMessage, assistantMessage) {
     const data = await this.readSessionMessages(sessionId);
     const now = this.now();
 
-    // 添加用户消息
+    // Add the user message.
     const userMsg = {
       id: this.generateId(),
       session_id: sessionId,
@@ -135,13 +135,13 @@ class MessageStore {
     };
     data.messages.push(userMsg);
 
-    // 添加 AI 回复
+    // Add the assistant reply.
     const assistantMsg = {
       id: this.generateId(),
       session_id: sessionId,
       role: 'assistant',
       content: assistantMessage.content,
-      created_at: this.now(), // 稍晚一点的时间戳
+      created_at: this.now(), // Slightly later timestamp.
       metadata: assistantMessage.metadata || {},
     };
     data.messages.push(assistantMsg);
@@ -155,13 +155,13 @@ class MessageStore {
   }
 
   /**
-   * 获取消息列表（支持游标分页）
+   * Get a paginated message list using cursors.
    * @param {string} sessionId - Session ID
-   * @param {object} options - 分页选项
-   * @param {number} options.limit - 每页数量
-   * @param {string} options.before_id - 查询此消息 ID 之前的消息
-   * @param {string} options.after_id - 查询此消息 ID 之后的消息
-   * @param {string} options.order - 排序方式 asc/desc
+   * @param {object} options - Pagination options
+   * @param {number} options.limit - Items per page
+   * @param {string} options.before_id - Messages before this message ID
+   * @param {string} options.after_id - Messages after this message ID
+   * @param {string} options.order - Sort order: asc/desc
    */
   async getMessages(sessionId, options = {}) {
     const {
@@ -174,10 +174,10 @@ class MessageStore {
     const data = await this.readSessionMessages(sessionId);
     let messages = data.messages;
 
-    // 查找消息索引
+    // Find the message index.
     const findIndexById = (id) => messages.findIndex(m => m.id === id);
 
-    // 游标过滤
+    // Apply cursor filters.
     if (before_id) {
       const index = findIndexById(before_id);
       if (index > 0) {
@@ -196,22 +196,22 @@ class MessageStore {
       }
     }
 
-    // 排序
+    // Sort the results.
     if (order === 'asc') {
       messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     } else {
       messages.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     }
 
-    // 分页
+    // Apply pagination.
     const actualLimit = Math.min(limit, 100);
     const hasMore = messages.length > actualLimit;
     messages = messages.slice(0, actualLimit);
 
-    // 如果是倒序，返回结果也需要按时间倒序
-    // 但如果用户请求的是 asc，保持正序
+    // When order is desc, the response should stay in descending time order.
+    // If the user requested asc, keep ascending order.
     if (order === 'desc') {
-      // 已经是倒序了
+      // Already in descending order.
     }
 
     return {
@@ -227,7 +227,7 @@ class MessageStore {
   }
 
   /**
-   * 删除 session 的所有消息
+   * Delete all messages for a session.
    */
   async deleteMessages(sessionId) {
     const filePath = this.getFilePath(sessionId);
@@ -242,12 +242,12 @@ class MessageStore {
       }
     }
 
-    return true; // 文件不存在也算成功
+    return true; // Treat a missing file as success.
   }
 
   /**
-   * 批量删除多个 session 的消息
-   * @param {string[]} sessionIds - Session ID 数组
+   * Delete messages for multiple sessions in a batch.
+   * @param {string[]} sessionIds - Array of session IDs
    */
   async deleteMessagesBatch(sessionIds) {
     const results = {
@@ -268,7 +268,7 @@ class MessageStore {
   }
 
   /**
-   * 检查 session 是否有消息
+   * Check whether a session has messages.
    */
   async hasMessages(sessionId) {
     const data = await this.readSessionMessages(sessionId);
@@ -276,7 +276,7 @@ class MessageStore {
   }
 
   /**
-   * 获取消息数量
+   * Get the message count.
    */
   async getMessageCount(sessionId) {
     const data = await this.readSessionMessages(sessionId);
@@ -284,19 +284,19 @@ class MessageStore {
   }
 
   /**
-   * 生成流式消息 ID
+   * Generate a streaming message ID.
    */
   generateStreamId() {
     return `stream_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
   }
 
   /**
-   * 创建流式消息
+   * Create a streaming message.
    * @param {string} sessionId - Session ID
-   * @param {object} options - 选项
-   * @param {string} [options.stream_id] - 流式消息 ID（可选，自动生成）
-   * @param {string} [options.model] - 模型名称
-   * @returns {Promise<object>} 创建的消息对象
+   * @param {object} options - Options
+   * @param {string} [options.stream_id] - Streaming message ID (optional, auto-generated)
+   * @param {string} [options.model] - Model name
+   * @returns {Promise<object>} The created message object
    */
   async addStreamingMessage(sessionId, options = {}) {
     const data = await this.readSessionMessages(sessionId);
@@ -332,12 +332,12 @@ class MessageStore {
   }
 
   /**
-   * 更新流式消息内容（追加内容）
+   * Update streaming message content by appending text.
    * @param {string} sessionId - Session ID
-   * @param {string} messageId - 消息 ID
-   * @param {string} chunk - 要追加的内容
+   * @param {string} messageId - Message ID
+   * @param {string} chunk - Content to append
    * @returns {Promise<boolean>} true if updated, false if message not found
-   * @throws {Error} 如果消息不是流式消息
+   * @throws {Error} If the message is not a streaming message
    */
   async updateStreamingContent(sessionId, messageId, chunk) {
     const data = await this.readSessionMessages(sessionId);
@@ -353,7 +353,7 @@ class MessageStore {
       throw new Error(`Message ${messageId} is not a streaming message`);
     }
 
-    // 追加内容
+    // Append content
     data.messages[messageIndex].content = (message.content || '') + chunk;
     data.updated_at = this.now();
 
@@ -363,14 +363,14 @@ class MessageStore {
   }
 
   /**
-   * 完成流式消息
+   * Complete a streaming message.
    * @param {string} sessionId - Session ID
-   * @param {string} messageId - 消息 ID
-   * @param {object} metadata - 完成时的元数据
-   * @param {number} [metadata.cost_usd] - 费用
-   * @param {number} [metadata.duration_ms] - 持续时间
-   * @returns {Promise<object|null>} completed message or null if not found
-   * @throws {Error} 如果消息不是 streaming 状态
+   * @param {string} messageId - Message ID
+   * @param {object} metadata - Completion metadata
+   * @param {number} [metadata.cost_usd] - Cost
+   * @param {number} [metadata.duration_ms] - Duration
+   * @returns {Promise<object|null>} Completed message or null if not found
+   * @throws {Error} If the message is not in the streaming state
    */
   async completeStreamingMessage(sessionId, messageId, metadata = {}) {
     const data = await this.readSessionMessages(sessionId);
@@ -383,12 +383,12 @@ class MessageStore {
     const now = this.now();
     const message = data.messages[messageIndex];
 
-    // 验证消息状态必须是 streaming
+    // Validate that the message status is streaming
     if (message.status !== 'streaming') {
       throw new Error(`Cannot complete message with status '${message.status}'. Only 'streaming' messages can be completed.`);
     }
 
-    // 更新状态和元数据
+    // Update status and metadata
     data.messages[messageIndex] = {
       ...message,
       status: 'completed',
@@ -408,9 +408,9 @@ class MessageStore {
   }
 
   /**
-   * 根据 stream_id 查找消息
+   * Find a message by stream_id.
    * @param {string} sessionId - Session ID
-   * @param {string} streamId - 流式消息 ID
+   * @param {string} streamId - Streaming message ID
    * @returns {Promise<object|null>} message or null if not found
    */
   async getStreamingMessage(sessionId, streamId) {

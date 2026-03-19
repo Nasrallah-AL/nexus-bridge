@@ -1,7 +1,7 @@
 const Validators = require('../utils/validators');
 
 /**
- * 创建异步任务路由
+ * Create async task routes.
  */
 function createTaskRoutes(taskQueue) {
   const router = require('express').Router();
@@ -88,7 +88,7 @@ function createTaskRoutes(taskQueue) {
    *               success: false
    *               error: "Failed to create task"
    */
-  // POST /api/tasks/async - 创建异步任务
+  // POST /api/tasks/async - Create an async task
   router.post('/async', async (req, res) => {
     const validation = Validators.validateTaskCreate(req.body);
     if (!validation.valid) {
@@ -99,7 +99,7 @@ function createTaskRoutes(taskQueue) {
     }
 
     try {
-      // 验证并解析项目路径（必须在工作空间下）
+      // Validate and resolve the project path (must be inside the workspace)
       const pathValidation = Validators.validateProjectPath(
         validation.value.project_path,
         req.app.locals.config?.workspacePath
@@ -238,7 +238,7 @@ function createTaskRoutes(taskQueue) {
    *               success: false
    *               error: "Failed to retrieve task"
    */
-  // GET /api/tasks/:id - 获取任务状态
+  // GET /api/tasks/:id - Get task status
   router.get('/:id', async (req, res) => {
     try {
       const task = await taskQueue.taskStore.get(req.params.id);
@@ -354,12 +354,12 @@ function createTaskRoutes(taskQueue) {
    *               success: false
    *               error: "Failed to update priority"
    */
-  // PATCH /api/tasks/:id/priority - 修改任务优先级
+  // PATCH /api/tasks/:id/priority - Update task priority
   router.patch('/:id/priority', async (req, res) => {
     try {
       const { priority } = req.body;
 
-      // 验证优先级
+      // Validate priority
       if (typeof priority !== 'number' || priority < 1 || priority > 10) {
         return res.status(400).json({
           success: false,
@@ -375,7 +375,7 @@ function createTaskRoutes(taskQueue) {
         });
       }
 
-      // 只允许修改 pending 或 processing 状态的任务
+      // Only allow priority changes for pending or processing tasks
       if (task.status !== 'pending' && task.status !== 'processing') {
         return res.status(400).json({
           success: false,
@@ -383,7 +383,7 @@ function createTaskRoutes(taskQueue) {
         });
       }
 
-      // 更新优先级
+      // Update the priority
       await taskQueue.taskStore.update(req.params.id, { priority });
 
       res.json({
@@ -466,7 +466,7 @@ function createTaskRoutes(taskQueue) {
    *               success: false
    *               error: "Failed to cancel task"
    */
-  // DELETE /api/tasks/:id - 取消任务
+  // DELETE /api/tasks/:id - Cancel a task
   router.delete('/:id', async (req, res) => {
     try {
       const result = await taskQueue.cancelTask(req.params.id);
@@ -484,7 +484,7 @@ function createTaskRoutes(taskQueue) {
     }
   });
 
-  // GET /api/tasks - 列出任务
+  // GET /api/tasks - List tasks
   router.get('/', async (req, res) => {
     try {
       const options = {
@@ -547,7 +547,7 @@ function createTaskRoutes(taskQueue) {
    *               success: false
    *               error: "Failed to retrieve queue status"
    */
-  // GET /api/tasks/status - 获取队列状态
+  // GET /api/tasks/status - Get queue status
   router.get('/queue/status', async (req, res) => {
     try {
       const status = await taskQueue.getStatus();

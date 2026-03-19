@@ -2,9 +2,10 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { getCommonBinDirectories, getEffectiveNodeBinDir } = require('./runtimePaths');
 
 /**
- * 路径解析器 - 自动检测 Claude 相关路径
+ * Path resolver - automatically detects Claude-related paths.
  */
 class PathResolver {
   constructor() {
@@ -13,28 +14,28 @@ class PathResolver {
   }
 
   /**
-   * 检测并验证所有路径
+   * Detect and validate all paths.
    */
   async detectAndValidate(config) {
     const results = {
       claudePath: await this.detectClaudePath(config.claudePath),
-      nvmBin: null, // 需要在 claudePath 检测后处理
+      nvmBin: null, // Process this after claudePath detection.
       defaultProjectPath: await this.detectProjectPath(config.defaultProjectPath),
     };
 
-    // nvmBin 依赖 claudePath 的结果
-    results.nvmBin = await this.detectNvmBin(config.nvmBin, results.claudePath);
+    // nvmBin depends on the claudePath result.
+    results.nvmBin = await this.detectNvmBin(getEffectiveNodeBinDir(config), results.claudePath);
 
     return results;
   }
 
   /**
-   * 检测 Claude CLI 路径
+   * Detect the Claude CLI path.
    */
   async detectClaudePath(existingPath) {
     const attempts = [];
 
-    // 1. 检查现有配置是否有效
+    // 1. Check whether the existing configuration is valid.
     if (existingPath && await this.isExecutable(existingPath)) {
       return { found: true, path: existingPath, method: 'existing_config' };
     }
@@ -42,20 +43,20 @@ class PathResolver {
       attempts.push({ path: existingPath, reason: 'from_config', valid: false });
     }
 
-    // 2. 使用 which/where 命令
+    // 2. Use the which/where command.
     const whichPath = await this.which('claude');
     if (whichPath && await this.isExecutable(whichPath)) {
       return { found: true, path: whichPath, method: 'which_command' };
     }
     if (whichPath) attempts.push({ path: whichPath, reason: 'which_command', valid: false });
 
-    // 3. 遍历 NVM 目录
+    // 3. Scan the NVM directories.
     const nvmPath = await this.findInNvm('claude');
     if (nvmPath) {
       return { found: true, path: nvmPath, method: 'nvm_scan' };
     }
 
-    // 4. 检查常见系统路径
+    // 4. Check common system paths.
     const systemPaths = this.isWindows
       ? [
           path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'claude.cmd'),
@@ -63,6 +64,7 @@ class PathResolver {
           path.join(process.env['ProgramFiles(x86)'] || '', 'claude', 'claude.exe'),
         ]
       : [
+          ...getCommonBinDirectories().map((dir) => path.join(dir, 'claude')),
           '/usr/local/bin/claude',
           '/usr/bin/claude',
           path.join(os.homedir(), 'npm-global', 'bin', 'claude'),
@@ -76,13 +78,13 @@ class PathResolver {
       attempts.push({ path: sysPath, reason: 'system_path', valid: false });
     }
 
-    // 5. 检查 PATH 环境变量
+    // 5. Check the PATH environment variable.
     const pathEnvPath = await this.findInPathEnv('claude');
     if (pathEnvPath) {
       return { found: true, path: pathEnvPath, method: 'path_env' };
     }
 
-    // 未找到
+    // Not found
     return {
       found: false,
       path: null,
@@ -92,12 +94,12 @@ class PathResolver {
   }
 
   /**
-   * 检测 NVM bin 目录
+   * Detect the NVM bin directory.
    */
   async detectNvmBin(existingPath, claudePathResult) {
     const attempts = [];
 
-    // 1. 检查现有配置是否有效
+    // 1. Check whether the existing configuration is valid
     if (existingPath && fs.existsSync(existingPath)) {
       return { found: true, path: existingPath, method: 'existing_config' };
     }
@@ -105,7 +107,7 @@ class PathResolver {
       attempts.push({ path: existingPath, reason: 'from_config', valid: false });
     }
 
-    // 2. 从 claudePath 推断
+    // 2. Infer it from claudePath
     if (claudePathResult.found && claudePathResult.path) {
       const inferred = this.inferNvmBinFromClaudePath(claudePathResult.path);
       if (inferred && fs.existsSync(inferred)) {
@@ -116,18 +118,18 @@ class PathResolver {
       }
     }
 
-    // 3. 使用 NVM 环境变量
+    // 3. Use NVM environment variables
     const nvmDirEnv = process.env.NVM_DIR;
     if (nvmDirEnv) {
       const currentVersion = process.env.NVM_CURRENT || process.env.NVM_NODEJS_ORG_MIRROR;
-      // 尝试读取当前激活的版本
+      // Try to read the currently active version
       const nvmCurrentPath = path.join(nvmDirEnv, 'current', 'bin');
       if (fs.existsSync(nvmCurrentPath)) {
         return { found: true, path: nvmCurrentPath, method: 'nvm_env_current' };
       }
       attempts.push({ path: nvmCurrentPath, reason: 'nvm_env_current', valid: false });
 
-      // 尝试常见的版本目录
+      // Try common version directories
       const versionsDir = path.join(nvmDirEnv, 'versions', 'node');
       if (fs.existsSync(versionsDir)) {
         const versions = fs.readdirSync(versionsDir).sort().reverse();
@@ -150,7 +152,7 @@ class PathResolver {
       attempts.push({ path: nodeDir, reason: 'which_node', valid: false });
     }
 
-    // 5. 遍历常见 NVM 路径
+    // 5. Scan common NVM paths
     const nvmBase = this.isWindows
       ? path.join(os.homedir(), 'AppData', 'Roaming', 'nvm')
       : path.join(os.homedir(), '.nvm');
@@ -167,7 +169,7 @@ class PathResolver {
       }
     }
 
-    // 未找到 - 返回默认值
+    // Not found - return the default fallback
     return {
       found: false,
       path: null,
@@ -178,12 +180,12 @@ class PathResolver {
   }
 
   /**
-   * 检测默认项目路径
+   * Detect the default project path.
    */
   async detectProjectPath(existingPath) {
     const attempts = [];
 
-    // 1. 检查现有配置是否有效
+    // 1. Check whether the existing configuration is valid
     if (existingPath && fs.existsSync(existingPath)) {
       return { found: true, path: existingPath, method: 'existing_config' };
     }
@@ -191,13 +193,13 @@ class PathResolver {
       attempts.push({ path: existingPath, reason: 'from_config', valid: false });
     }
 
-    // 2. 当前工作目录
+    // 2. Current working directory
     const cwd = process.cwd();
     if (fs.existsSync(cwd)) {
       return { found: true, path: cwd, method: 'current_directory' };
     }
 
-    // 3. 常见项目目录
+    // 3. Common project directories
     const commonDirs = ['workspace', 'projects', 'dev', 'code', 'Work', 'Documents'];
     for (const dir of commonDirs) {
       const dirPath = path.join(os.homedir(), dir);
@@ -207,13 +209,13 @@ class PathResolver {
       attempts.push({ path: dirPath, reason: 'common_directory', valid: false });
     }
 
-    // 4. 用户主目录
+    // 4. User home directory
     const homedir = os.homedir();
     return { found: true, path: homedir, method: 'home_directory' };
   }
 
   /**
-   * 使用 which/where 命令查找可执行文件
+   * Find an executable using the which/where command.
    */
   which(command) {
     return new Promise((resolve) => {
@@ -239,7 +241,7 @@ class PathResolver {
       child.on('close', (code) => {
         clearTimeout(timeout);
         if (code === 0 && stdout.trim()) {
-          // which/where 可能返回多行，取第一个
+          // which/where may return multiple lines; use the first one
           const lines = stdout.trim().split('\n');
           resolve(lines[0].trim());
         } else {
@@ -255,7 +257,7 @@ class PathResolver {
   }
 
   /**
-   * 在 NVM 目录中查找文件
+   * Find a file in NVM directories.
    */
   async findInNvm(filename) {
     const nvmBase = path.join(os.homedir(), '.nvm', 'versions', 'node');
@@ -274,14 +276,14 @@ class PathResolver {
         }
       }
     } catch (err) {
-      // 忽略错误
+      // Ignore errors
     }
 
     return null;
   }
 
   /**
-   * 在 PATH 环境变量中查找
+   * Find a file in the PATH environment variable.
    */
   async findInPathEnv(filename) {
     const pathEnv = process.env.PATH;
@@ -303,13 +305,13 @@ class PathResolver {
   }
 
   /**
-   * 检查文件是否可执行
+   * Check whether a file is executable.
    */
   isExecutable(filePath) {
     return new Promise((resolve) => {
       fs.access(filePath, fs.constants.F_OK | fs.constants.X_OK, (err) => {
         if (err) {
-          // 在 Windows 上，.cmd 文件不需要 X 权限
+          // On Windows, .cmd files do not need X permissions
           if (this.isWindows && filePath.endsWith('.cmd')) {
             fs.access(filePath, fs.constants.F_OK, (err2) => resolve(!err2));
           } else {
@@ -323,14 +325,14 @@ class PathResolver {
   }
 
   /**
-   * 从 claudePath 推断 nvmBin
+   * Infer nvmBin from claudePath.
    */
   inferNvmBinFromClaudePath(claudePath) {
-    // claudePath 通常在: ~/.nvm/versions/node/vXX.XX.X/bin/claude
-    // nvmBin 应该是: ~/.nvm/versions/node/vXX.XX.X/bin
+    // claudePath is usually at: ~/.nvm/versions/node/vXX.XX.X/bin/claude
+    // nvmBin should be: ~/.nvm/versions/node/vXX.XX.X/bin
     const normalizedPath = claudePath.replace(/\\/g, '/');
 
-    // 检查是否在 NVM 目录中
+    // Check whether it is inside an NVM directory
     const nvmPattern = /\.nvm\/versions\/node\/([^/]+)\/bin/;
     const match = normalizedPath.match(nvmPattern);
 
@@ -339,7 +341,7 @@ class PathResolver {
       return path.join(os.homedir(), '.nvm', 'versions', 'node', version, 'bin');
     }
 
-    // 如果 claudePath 在某个 bin 目录中，取其父目录
+    // If claudePath is inside a bin directory, use that parent directory
     const binDir = path.dirname(claudePath);
     if (binDir.endsWith('bin')) {
       return binDir;
@@ -349,7 +351,7 @@ class PathResolver {
   }
 
   /**
-   * 生成 claudePath 错误信息
+   * Generate the claudePath error message.
    */
   generateClaudePathError(attempts) {
     let message = 'Claude CLI not found. Tried the following:\n';
@@ -364,7 +366,7 @@ class PathResolver {
   }
 
   /**
-   * 生成 nvmBin 错误信息
+   * Generate the nvmBin error message.
    */
   generateNvmBinError(attempts) {
     let message = 'NVM bin directory not found.\n';
@@ -374,7 +376,7 @@ class PathResolver {
   }
 
   /**
-   * 将检测结果应用到配置
+   * Apply detection results to the configuration.
    */
   applyDetectionResults(config, results) {
     const updates = [];
@@ -394,8 +396,12 @@ class PathResolver {
         updates.push(`nvmBin: ${config.nvmBin} → ${results.nvmBin.path}`);
         config.nvmBin = results.nvmBin.path;
       }
+      if (config.nodeBinDir !== results.nvmBin.path) {
+        updates.push(`nodeBinDir: ${config.nodeBinDir} → ${results.nvmBin.path}`);
+        config.nodeBinDir = results.nvmBin.path;
+      }
     } else {
-      warnings.push(`nvmBin: ${results.nvmBin.error}`);
+      warnings.push(`nodeBinDir/nvmBin: ${results.nvmBin.error}`);
     }
 
     if (results.defaultProjectPath.found) {

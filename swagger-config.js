@@ -4,7 +4,7 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Claude Code Server API',
+      title: 'Nexus Bridge API',
       version: '1.0.0',
       description: `
         Enterprise-grade HTTP API wrapper for Claude CLI with complete features including session management, async tasks, statistics monitoring, and more.
@@ -22,11 +22,11 @@ const options = {
 
         The API supports Bearer Token authentication when enabled via server configuration.
 
-        **Format:** \`Authorization: Bearer ccs_ak_<your-api-key>\`
+        **Format:** \`Authorization: Bearer nb_ak_<your-api-key>\`
 
         **Get API Key:**
         1. Run \`node cli.js config\`
-        2. Enable "API 密钥认证"
+        2. Enable "API Key Authentication"
         3. View generated API Key
 
         **Note:** Only required when authentication is enabled on the server. Health check endpoint (/health) may be exempt from authentication.
@@ -37,11 +37,11 @@ const options = {
 
         ## Documentation
 
-        For more information, visit [GitHub Repository](https://github.com/your-repo/claude-code-server)
+        For more information, visit [GitHub Repository](https://github.com/csdwd/nexus-bridge)
       `,
       contact: {
-        name: 'Claude Code Server',
-        url: 'https://github.com/your-repo/claude-code-server',
+        name: 'Nexus Bridge',
+        url: 'https://github.com/csdwd/nexus-bridge',
         email: 'noreply@example.com'
       },
       license: {
@@ -62,7 +62,9 @@ const options = {
       { name: 'Tasks', description: 'Async task management endpoints' },
       { name: 'Statistics', description: 'Statistics and analytics endpoints' },
       { name: 'Health', description: 'Health check endpoints' },
-      { name: 'Config', description: 'Configuration management endpoints' }
+      { name: 'Config', description: 'Configuration management endpoints' },
+      { name: 'Models', description: 'Model discovery endpoints' },
+      { name: 'MCP', description: 'MCP status and configuration endpoints' }
     ],
     security: [
       { BearerAuth: [] }
@@ -74,18 +76,18 @@ const options = {
           scheme: 'bearer',
           bearerFormat: 'API Key',
           description: `
-使用 Bearer Token 进行 API 认证。
+Use a Bearer token for API authentication.
 
-**格式:** \`Authorization: Bearer ccs_ak_<your-api-key>\`
+**Format:** \`Authorization: Bearer nb_ak_<your-api-key>\`
 
-**获取 API Key:**
-1. 运行 \`node cli.js config\`
-2. 启用 "API 密钥认证"
-3. 查看生成的 API Key
+**Get an API Key:**
+1. Run \`node cli.js config\`
+2. Enable "API Key Authentication"
+3. View the generated API key
 
-**注意:**
-- 仅在服务端启用认证时需要
-- 健康检查接口 (/health) 可能豁免认证
+**Note:**
+- Only required when authentication is enabled on the server
+- The health check endpoint (/health) may be exempt from authentication
           `.trim()
         }
       },

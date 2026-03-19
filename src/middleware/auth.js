@@ -6,7 +6,7 @@ const { deriveApiKey } = require('../utils/keyGenerator');
  *
  * Features:
  * - Bearer token validation using constant-time comparison
- * - API key format validation (ccs_ak_<base64url>)
+ * - API key format validation (nb_ak_<base64url>)
  * - Configurable health check bypass
  * - Can be disabled via config.security.auth.enabled
  * - Audit logging for auth failures and successful API calls
@@ -51,7 +51,7 @@ function createAuthMiddleware(config, auditLogger = null) {
       return res.status(401).json({
         success: false,
         error: 'Missing Authorization header',
-        hint: 'Use: Authorization: Bearer ccs_ak_<your-api-key>'
+        hint: 'Use: Authorization: Bearer nb_ak_<your-api-key>'
       });
     }
 
@@ -63,15 +63,15 @@ function createAuthMiddleware(config, auditLogger = null) {
       return res.status(401).json({
         success: false,
         error: 'Invalid Authorization format',
-        hint: 'Use: Authorization: Bearer ccs_ak_<your-api-key>'
+        hint: 'Use: Authorization: Bearer nb_ak_<your-api-key>'
       });
     }
 
     // Extract API key
     const clientApiKey = authHeader.substring(7);
 
-    // Validate API key format (ccs_ak_<base64url>)
-    if (!clientApiKey.startsWith('ccs_ak_')) {
+    // Validate API key format (nb_ak_<base64url>)
+    if (!clientApiKey.startsWith('nb_ak_')) {
       if (auditLogger) {
         auditLogger.logAuthFailure(req, 'invalid_format');
       }
@@ -79,7 +79,7 @@ function createAuthMiddleware(config, auditLogger = null) {
       return res.status(401).json({
         success: false,
         error: 'Invalid API Key format',
-        hint: 'API key must start with "ccs_ak_"'
+        hint: 'API key must start with "nb_ak_"'
       });
     }
 

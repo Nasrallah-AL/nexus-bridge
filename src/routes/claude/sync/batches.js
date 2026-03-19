@@ -74,7 +74,7 @@ function createBatchesRoute(claudeExecutor, config) {
   router.post('/', async (req, res) => {
     const { validateBatchRequest, validateProjectPath } = require('../../../utils/validators');
 
-    // 验证请求
+    // Validate the request.
     const validation = validateBatchRequest(req.body);
     if (!validation.valid) {
       return res.status(400).json({
@@ -85,7 +85,7 @@ function createBatchesRoute(claudeExecutor, config) {
 
     const { prompts, project_path, model } = validation.value;
 
-    // 验证并解析项目路径（必须在工作空间下）
+    // Validate and resolve the project path (must be inside the workspace).
     const pathValidation = validateProjectPath(project_path, config.workspacePath);
 
     if (!pathValidation.valid) {
@@ -97,7 +97,7 @@ function createBatchesRoute(claudeExecutor, config) {
 
     const projectPath = pathValidation.fullPath;
 
-    // 并发执行所有请求
+    // Execute all requests concurrently.
     const promises = prompts.map(prompt =>
       claudeExecutor.execute({
         prompt,
@@ -109,7 +109,7 @@ function createBatchesRoute(claudeExecutor, config) {
     try {
       const results = await Promise.all(promises);
 
-      // 统计结果
+      // Summarize the results.
       const successCount = results.filter(r => r.success).length;
       const failCount = results.filter(r => !r.success).length;
       const totalCost = results.reduce((sum, r) => sum + (r.cost_usd || 0), 0);

@@ -4,7 +4,7 @@ const getLogger = require('../utils/logger');
 const { EventEmitter } = require('events');
 
 /**
- * 简单内存任务队列
+ * Simple in-memory task queue.
  */
 class TaskQueue extends EventEmitter {
   constructor(config, taskStore, claudeExecutor, webhookNotifier = null, providerRouter = null) {
@@ -16,18 +16,18 @@ class TaskQueue extends EventEmitter {
     this.providerRouter = providerRouter;
     this.logger = getLogger({ logFile: config.logFile, logLevel: config.logLevel });
 
-    // 队列配置
+    // Queue configuration
     this.concurrency = config.taskQueue?.concurrency || 3;
     this.defaultTimeout = config.taskQueue?.defaultTimeout || 300000;
 
-    // 运行状态
+    // Runtime state
     this.running = false;
     this.activeTasks = new Map(); // taskId -> { promise, timeout }
     this.pendingCheckInterval = null;
   }
 
   /**
-   * 启动队列
+   * Start the queue.
    */
   async start() {
     if (this.running) {
@@ -37,13 +37,13 @@ class TaskQueue extends EventEmitter {
 
     this.running = true;
 
-    // 恢复之前未完成的任务
+    // Restore previously unfinished tasks
     await this.restorePendingTasks();
 
-    // 启动处理循环
+    // Start the processing loop
     this.processQueue();
 
-    // 定期检查新任务
+    // Periodically check for new tasks
     this.pendingCheckInterval = setInterval(() => {
       this.processQueue();
     }, 1000);
@@ -52,7 +52,7 @@ class TaskQueue extends EventEmitter {
   }
 
   /**
-   * 停止队列
+   * Stop the queue.
    */
   async stop() {
     if (!this.running) {
@@ -61,13 +61,13 @@ class TaskQueue extends EventEmitter {
 
     this.running = false;
 
-    // 停止检查定时器
+    // Stop the polling timer
     if (this.pendingCheckInterval) {
       clearInterval(this.pendingCheckInterval);
       this.pendingCheckInterval = null;
     }
 
-    // 等待活跃任务完成（最多等待 10 秒）
+    // Wait for active tasks to finish (up to 10 seconds)
     const timeout = setTimeout(() => {
       if (this.activeTasks.size > 0) {
         this.logger.warn('Forcing shutdown with active tasks', {
@@ -86,7 +86,7 @@ class TaskQueue extends EventEmitter {
   }
 
   /**
-   * 添加任务到队列
+   * Add a task to the queue.
    */
   async addTask(taskData) {
     const task = await this.taskStore.create(taskData);
@@ -95,69 +95,69 @@ class TaskQueue extends EventEmitter {
       priority: task.priority,
     });
 
-    // 触发处理
+    // Trigger processing
     setImmediate(() => this.processQueue());
 
     return task;
   }
 
   /**
-   * 处理队列
+   * Process the queue.
    */
   async processQueue() {
     if (!this.running) {
       return;
     }
 
-    // 如果已达到最大并发数，等待
+    // If maximum concurrency has been reached, wait
     if (this.activeTasks.size >= this.concurrency) {
       return;
     }
 
-    // 获取下一个待处理任务
+    // Get the next pending task
     const task = await this.taskStore.getNextPending();
     if (!task) {
       return;
     }
 
-    // 检查任务是否已在活跃列表中
+    // Check whether the task is already active
     if (this.activeTasks.has(task.id)) {
       return;
     }
 
-    // 先添加到活跃任务列表（立即占用并发槽位）
+    // Add it to the active task list first (immediately consumes a concurrency slot)
     this.activeTasks.set(task.id, { task, startedAt: Date.now() });
 
-    // 标记为处理中
+    // Mark it as processing
     try {
       await this.taskStore.markProcessing(task.id);
     } catch (error) {
-      // 如果标记失败，从活跃列表中移除
+      // If marking fails, remove it from the active list
       this.activeTasks.delete(task.id);
       this.logger.error('Failed to mark task as processing', { task_id: task.id, error: error.message });
       return;
     }
 
-    // 执行任务
+    // Execute the task
     this.executeTask(task).catch(err => {
       this.logger.error('Task execution error', { task_id: task.id, error: err.message });
     });
   }
 
   /**
-   * 执行单个任务
+   * Execute a single task.
    */
   async executeTask(task) {
     const taskId = task.id;
 
-    // 添加到活跃任务列表（用于并发控制和进程管理）
+    // Add to the active task list for concurrency control and process management
     this.activeTasks.set(taskId, { task, childProcess: null, startedAt: Date.now() });
 
-    // 从 metadata 中提取参数
+    // Extract parameters from metadata
     const metadata = task.metadata || {};
     const webhookUrl = metadata.webhook_url;
 
-    // 发送任务开始处理的 webhook 通知
+    // Send the webhook notification that task processing has started
     if (this.webhookNotifier) {
       const taskData = {
         prompt: task.prompt,
@@ -178,7 +178,7 @@ class TaskQueue extends EventEmitter {
       }
     }
 
-    // 创建任务超时
+    // Create the task timeout
     const timeout = setTimeout(async () => {
       this.logger.warn('Task timeout', { task_id: taskId });
       await this.taskStore.markFailed(taskId, 'Task execution timeout');
@@ -192,7 +192,7 @@ class TaskQueue extends EventEmitter {
 
       this.emit('taskFailed', { taskId, reason: 'timeout' });
 
-      // 发送 webhook 通知（使用自定义 URL）
+      // Send the webhook notification using the custom URL
       if (this.webhookNotifier && webhookUrl) {
         await this.webhookNotifier.sendCustomNotification('task.timeout', {
           task_id: taskId,
@@ -206,7 +206,7 @@ class TaskQueue extends EventEmitter {
     }, this.defaultTimeout);
 
     try {
-      // 执行 Claude 命令（使用 metadata 中的参数）
+      // Execute the Claude command using metadata parameters
       const result = await this.claudeExecutor.execute({
         prompt: task.prompt,
         projectPath: task.project_path,
@@ -222,7 +222,7 @@ class TaskQueue extends EventEmitter {
         provider: metadata.provider || null,
         providerRouter: this.providerRouter,
         onSpawn: (childProcess) => {
-          // 保存子进程引用，用于取消时终止
+          // Save the child process reference so it can be terminated on cancellation
           const active = this.activeTasks.get(taskId);
           if (active) {
             active.childProcess = childProcess;
@@ -230,11 +230,11 @@ class TaskQueue extends EventEmitter {
         },
       });
 
-      // 清除超时
+      // Clear the timeout
       clearTimeout(timeout);
 
       if (result.success) {
-        // 标记为成功
+        // Mark as successful
         await this.taskStore.markCompleted(
           taskId,
           result.result,
@@ -254,7 +254,7 @@ class TaskQueue extends EventEmitter {
         });
         this.emit('taskCompleted', { taskId, result });
 
-        // 发送 webhook 通知（使用自定义 URL）
+        // Send the webhook notification using the custom URL
         if (this.webhookNotifier && webhookUrl) {
           await this.webhookNotifier.sendCustomNotification('task.completed', {
             task_id: taskId,
@@ -268,7 +268,7 @@ class TaskQueue extends EventEmitter {
           await this.webhookNotifier.notifyTaskCompleted(taskId, result);
         }
       } else {
-        // 标记为失败
+        // Mark as failed
         await this.taskStore.markFailed(taskId, result.error);
 
         // Record failure for load balancing health tracking
@@ -283,7 +283,7 @@ class TaskQueue extends EventEmitter {
         });
         this.emit('taskFailed', { taskId, error: result.error });
 
-        // 发送 webhook 通知（使用自定义 URL）
+        // Send the webhook notification using the custom URL
         if (this.webhookNotifier && webhookUrl) {
           await this.webhookNotifier.sendCustomNotification('task.failed', {
             task_id: taskId,
@@ -294,10 +294,10 @@ class TaskQueue extends EventEmitter {
         }
       }
     } catch (error) {
-      // 清除超时
+      // Clear the timeout
       clearTimeout(timeout);
 
-      // 标记为失败
+      // Mark as failed
       await this.taskStore.markFailed(taskId, error.message);
 
       // Record failure for load balancing health tracking
@@ -312,7 +312,7 @@ class TaskQueue extends EventEmitter {
       });
       this.emit('taskFailed', { taskId, error: error.message });
 
-      // 发送 webhook 通知（使用自定义 URL）
+      // Send the webhook notification using the custom URL
       if (this.webhookNotifier && webhookUrl) {
         await this.webhookNotifier.sendCustomNotification('task.error', {
           task_id: taskId,
@@ -322,16 +322,16 @@ class TaskQueue extends EventEmitter {
         await this.webhookNotifier.notifyTaskFailed(taskId, error.message);
       }
     } finally {
-      // 从活跃任务中移除
+      // Remove from the active task list
       this.activeTasks.delete(taskId);
 
-      // 触发下一个任务
+      // Trigger the next task
       setImmediate(() => this.processQueue());
     }
   }
 
   /**
-   * 取消任务
+   * Cancel a task.
    */
   async cancelTask(taskId) {
     const task = await this.taskStore.get(taskId);
@@ -339,7 +339,7 @@ class TaskQueue extends EventEmitter {
       return { success: false, error: 'Task not found' };
     }
 
-    // 只能取消 pending 或 processing 状态的任务
+    // Only tasks in pending or processing state can be cancelled
     if (task.status !== 'pending' && task.status !== 'processing') {
       return {
         success: false,
@@ -347,16 +347,16 @@ class TaskQueue extends EventEmitter {
       };
     }
 
-    // 如果任务正在执行，终止进程
+    // If the task is running, terminate the process
     const active = this.activeTasks.get(taskId);
     if (active && active.childProcess) {
       const child = active.childProcess;
 
-      // 先发送 SIGTERM，优雅终止
+      // Send SIGTERM first for a graceful shutdown
       child.kill('SIGTERM');
       this.logger.info('Sent SIGTERM to task process', { task_id: taskId });
 
-      // 5秒后如果还没退出，发送 SIGKILL 强制终止
+      // If it is still running after 5 seconds, send SIGKILL to force termination
       const killTimer = setTimeout(() => {
         if (!child.killed) {
           child.kill('SIGKILL');
@@ -364,25 +364,25 @@ class TaskQueue extends EventEmitter {
         }
       }, 5000);
 
-      // 进程退出后清除定时器
+      // Clear the timer after the process exits
       child.on('exit', () => {
         clearTimeout(killTimer);
         this.logger.info('Task process exited', { task_id: taskId });
       });
     }
 
-    // 从活跃任务中移除
+    // Remove from the active task list
     if (this.activeTasks.has(taskId)) {
       this.activeTasks.delete(taskId);
     }
 
-    // 标记为已取消
+    // Mark as cancelled
     const result = await this.taskStore.cancel(taskId);
     if (result) {
       this.logger.info('Task cancelled', { task_id: taskId });
       this.emit('taskCancelled', { taskId });
 
-      // 发送 webhook 通知
+      // Send the webhook notification
       if (this.webhookNotifier) {
         await this.webhookNotifier.notifyTaskCancelled(taskId);
       }
@@ -394,7 +394,7 @@ class TaskQueue extends EventEmitter {
   }
 
   /**
-   * 获取队列状态
+   * Get queue status.
    */
   async getStatus() {
     const stats = await this.taskStore.getStats();
@@ -408,7 +408,7 @@ class TaskQueue extends EventEmitter {
   }
 
   /**
-   * 恢复之前未完成的任务
+   * Restore previously unfinished tasks.
    */
   async restorePendingTasks() {
     const processingTasks = await this.taskStore.list({ status: 'processing' });
@@ -418,7 +418,7 @@ class TaskQueue extends EventEmitter {
         count: processingTasks.length,
       });
 
-      // 将处理中的任务重置为待处理
+      // Reset processing tasks back to pending
       for (const task of processingTasks) {
         await this.taskStore.update(task.id, { status: 'pending' });
       }

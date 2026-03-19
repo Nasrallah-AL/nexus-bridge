@@ -41,11 +41,11 @@ const { ensureSession } = require('../common/session');
  */
 function createAsyncMessagesRoute(claudeExecutor, config, taskQueue, sessionManager, providerRouter) {
   router.post('/', async (req, res) => {
-    // 使用公共验证逻辑
+    // Use the shared validation logic.
     const validated = validateAndParseRequest(req, res, config);
-    if (!validated) return; // 验证失败，响应已发送
+    if (!validated) return; // Validation failed and the response has already been sent.
 
-    // 检查任务队列是否可用
+    // Ensure the task queue is available.
     if (!taskQueue) {
       return res.status(501).json({
         success: false,
@@ -53,7 +53,7 @@ function createAsyncMessagesRoute(claudeExecutor, config, taskQueue, sessionMana
       });
     }
 
-    // 确保 Session 存在
+    // Ensure the session exists.
     const sessionId = await ensureSession(
       sessionManager,
       validated.sessionId,
@@ -62,7 +62,7 @@ function createAsyncMessagesRoute(claudeExecutor, config, taskQueue, sessionMana
       config
     );
 
-    // 先保存用户消息（在创建任务前）
+    // Save the user message before creating the task.
     if (sessionManager?.messageStore && sessionId) {
       try {
         await sessionManager.messageStore.addMessage(sessionId, {
@@ -75,7 +75,7 @@ function createAsyncMessagesRoute(claudeExecutor, config, taskQueue, sessionMana
           },
         });
       } catch (msgErr) {
-        // 消息存储失败不影响主流程
+        // Message storage failures should not interrupt the main flow.
         console.error('Failed to save user message:', msgErr.message);
       }
     }
@@ -84,7 +84,7 @@ function createAsyncMessagesRoute(claudeExecutor, config, taskQueue, sessionMana
     const provider = providerRouter ? providerRouter.select(sessionId) : null;
 
     try {
-      // 创建异步任务
+      // Create the async task.
       const task = await taskQueue.addTask({
         prompt: validated.prompt,
         project_path: validated.projectPath,

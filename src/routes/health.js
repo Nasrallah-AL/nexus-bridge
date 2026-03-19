@@ -1,5 +1,5 @@
 /**
- * 健康检查路由
+ * Health check route.
  */
 
 /**
@@ -8,7 +8,7 @@
  *   get:
  *     summary: Health check endpoint
  *     description: |
- *       Check the health status of the Claude Code Server.
+ *       Check the health status of Nexus Bridge.
  *       This endpoint may be exempt from authentication when configured.
  *     tags:
  *       - Health

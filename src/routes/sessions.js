@@ -1,7 +1,7 @@
 const Validators = require('../utils/validators');
 
 /**
- * 创建会话路由
+ * Create session routes.
  * @param {Object} sessionManager - Session manager service
  * @param {Object} messageStore - Message store service (optional)
  * @param {Object} streamManager - Stream manager service (optional)
@@ -86,7 +86,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
    *               success: false
    *               error: "Failed to create session"
    */
-  // POST /api/sessions - 创建会话
+  // POST /api/sessions - Create a session
   router.post('/', async (req, res) => {
     const validation = Validators.validateSessionCreate(req.body);
     if (!validation.valid) {
@@ -96,7 +96,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
       });
     }
 
-    // 验证并解析项目路径（必须在工作空间下）
+    // Validate and resolve the project path (must be inside the workspace)
     const pathValidation = Validators.validateProjectPath(
       validation.value.project_path,
       sessionManager.config.workspacePath
@@ -112,7 +112,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
     try {
       const session = await sessionManager.createSession({
         ...validation.value,
-        project_path: pathValidation.fullPath,  // 使用解析后的完整路径
+        project_path: pathValidation.fullPath,  // Use the resolved full path.
       });
       res.status(201).json({
         success: true,
@@ -204,7 +204,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
    *               success: false
    *               error: "Failed to retrieve sessions"
    */
-  // GET /api/sessions - 列出会话
+  // GET /api/sessions - List sessions
   router.get('/', async (req, res) => {
     try {
       const options = {
@@ -227,7 +227,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
     }
   });
 
-  // GET /api/sessions/search - 搜索会话
+  // GET /api/sessions/search - Search sessions
   router.get('/search', async (req, res) => {
     const validation = Validators.validateSearchQuery(req.query);
     if (!validation.valid) {
@@ -318,7 +318,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
    *               success: false
    *               error: "Failed to retrieve session"
    */
-  // GET /api/sessions/:id - 获取会话详情
+  // GET /api/sessions/:id - Get session details
   router.get('/:id', async (req, res) => {
     try {
       const session = await sessionManager.getSession(req.params.id);
@@ -464,7 +464,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
    *               success: false
    *               error: "Failed to continue session"
    */
-  // POST /api/sessions/:id/continue - 继续会话
+  // POST /api/sessions/:id/continue - Continue a session
   router.post('/:id/continue', async (req, res) => {
     const validation = Validators.validateSessionContinue(req.body);
     if (!validation.valid) {
@@ -536,7 +536,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
    *             schema:
    *               type: string
    */
-  // POST /api/sessions/:id/continue/stream - 流式继续会话
+  // POST /api/sessions/:id/continue/stream - Continue a session with streaming output
   router.post('/:id/continue/stream', async (req, res) => {
     const validation = Validators.validateSessionContinue(req.body);
     if (!validation.valid) {
@@ -547,7 +547,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
     }
 
     try {
-      // 检查会话是否存在
+      // Check whether the session exists
       const session = await sessionManager.getSession(req.params.id);
       if (!session) {
         return res.status(404).json({
@@ -556,7 +556,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         });
       }
 
-      // 检查会话状态
+      // Check the session status
       if (session.status !== 'active') {
         return res.status(400).json({
           success: false,
@@ -564,15 +564,15 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         });
       }
 
-      // 使用流式执行器
+      // Use the streaming executor
       const ClaudeStreamExecutor = require('../services/claudeStreamExecutor');
       const streamExecutor = new ClaudeStreamExecutor(
         sessionManager.config,
         sessionManager.sessionStore,
         sessionManager.statsStore,
-        messageStore,  // 传递 messageStore
-        streamManager,  // 传递 streamManager
-        providerRouter   // 传递 providerRouter for load balancing
+        messageStore,  // Pass messageStore.
+        streamManager,  // Pass streamManager.
+        providerRouter   // Pass providerRouter for load balancing.
       );
 
       await streamExecutor.executeStream({
@@ -584,18 +584,18 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         allowedTools: validation.value.allowed_tools,
         disallowedTools: validation.value.disallowed_tools,
         permissionMode: validation.value.permission_mode,
-        providerId: validation.value.provider_id,  // 传递 provider_id for forced provider selection
+        providerId: validation.value.provider_id,  // Pass provider_id to force provider selection.
       }, res);
 
     } catch (error) {
-      // 如果还没有发送headers，发送JSON错误
+      // If headers have not been sent yet, return a JSON error
       if (!res.headersSent) {
         res.status(500).json({
           success: false,
           error: error.message,
         });
       } else {
-        // 已经开始流式输出，发送SSE错误
+        // Streaming has already started, so send an SSE error event
         res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
         res.end();
       }
@@ -709,9 +709,9 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
    *             schema:
    *               $ref: '#/components/schemas/ErrorResponse'
    */
-  // GET /api/sessions/:id/messages - 获取会话消息历史
+  // GET /api/sessions/:id/messages - Get session message history
   router.get('/:id/messages', async (req, res) => {
-    // 检查 messageStore 是否可用
+    // Check whether messageStore is available
     if (!messageStore) {
       return res.status(501).json({
         success: false,
@@ -720,7 +720,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
     }
 
     try {
-      // 检查 session 是否存在
+      // Check whether the session exists
       const session = await sessionManager.getSession(req.params.id);
       if (!session) {
         return res.status(404).json({
@@ -729,7 +729,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         });
       }
 
-      // 解析分页参数
+      // Parse pagination parameters
       const options = {
         limit: req.query.limit ? parseInt(req.query.limit) : 20,
         before_id: req.query.before_id,
@@ -737,7 +737,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         order: req.query.order || 'desc',
       };
 
-      // 验证参数
+      // Validate parameters
       if (options.limit < 1 || options.limit > 100) {
         return res.status(400).json({
           success: false,
@@ -766,7 +766,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
     }
   });
 
-  // GET /api/sessions/:id/stats - 获取会话统计
+  // GET /api/sessions/:id/stats - Get session statistics
   router.get('/:id/stats', async (req, res) => {
     try {
       const stats = await sessionManager.getSessionStats(req.params.id);
@@ -833,9 +833,9 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
    *       '501':
    *         description: Stream resume feature not available
    */
-  // GET /api/sessions/:id/stream/status - 检查会话的活跃流状态
+  // GET /api/sessions/:id/stream/status - Check active stream status for the session
   router.get('/:id/stream/status', async (req, res) => {
-    // 检查 streamManager 是否可用
+    // Check whether streamManager is available
     if (!streamManager) {
       return res.status(501).json({
         success: false,
@@ -844,7 +844,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
     }
 
     try {
-      // 检查会话是否存在
+      // Check whether the session exists
       const session = await sessionManager.getSession(req.params.id);
       if (!session) {
         return res.status(404).json({
@@ -853,7 +853,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         });
       }
 
-      // 获取该会话的活跃流
+      // Get the active stream for this session
       const activeStream = streamManager.getStreamBySession(req.params.id);
 
       if (!activeStream) {
@@ -863,7 +863,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         });
       }
 
-      // 返回活跃流信息
+      // Return active stream information
       res.json({
         success: true,
         has_active_stream: true,
@@ -934,9 +934,9 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
    *       '501':
    *         description: Stream resume feature not available
    */
-  // GET /api/sessions/:id/stream/resume - 恢复或重连流
+  // GET /api/sessions/:id/stream/resume - Resume or reconnect to a stream
   router.get('/:id/stream/resume', async (req, res) => {
-    // 检查 streamManager 是否可用
+    // Check whether streamManager is available
     if (!streamManager) {
       return res.status(501).json({
         success: false,
@@ -946,7 +946,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
 
     const { stream_id: streamId } = req.query;
 
-    // 验证 stream_id 参数
+    // Validate the stream_id parameter
     if (!streamId) {
       return res.status(400).json({
         success: false,
@@ -955,7 +955,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
     }
 
     try {
-      // 检查会话是否存在
+      // Check whether the session exists
       const session = await sessionManager.getSession(req.params.id);
       if (!session) {
         return res.status(404).json({
@@ -964,7 +964,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         });
       }
 
-      // 获取流
+      // Get the stream
       const stream = streamManager.getStream(streamId);
       if (!stream) {
         return res.status(404).json({
@@ -973,7 +973,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         });
       }
 
-      // 验证流属于该会话
+      // Validate that the stream belongs to this session
       if (stream.session_id !== req.params.id) {
         return res.status(400).json({
           success: false,
@@ -981,7 +981,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         });
       }
 
-      // 如果流已完成，返回完整内容
+      // If the stream has completed, return the full content
       if (stream.status === 'completed') {
         return res.json({
           success: true,
@@ -992,8 +992,8 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
         });
       }
 
-      // 对于正在进行的流，返回 SSE 流
-      // 设置 SSE 响应头
+      // For ongoing streams, return an SSE stream
+      // Set SSE response headers
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
@@ -1001,29 +1001,29 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
       res.setHeader('X-Stream-Id', streamId);
       res.flushHeaders();
 
-      // 发送已累积的内容
+      // Send the already accumulated content
       const resumedEvent = {
         type: 'resumed',
         content: stream.content,
       };
       res.write(`event: message\ndata: ${JSON.stringify(resumedEvent)}\n\n`);
 
-      // 添加客户端到流
+      // Add the client to the stream
       streamManager.addClient(streamId, res);
 
-      // 处理客户端断开连接
+      // Handle client disconnects
       res.on('close', () => {
         streamManager.removeClient(streamId, res);
       });
     } catch (error) {
-      // 如果还没有发送headers，发送JSON错误
+      // If headers have not been sent yet, return a JSON error
       if (!res.headersSent) {
         res.status(500).json({
           success: false,
           error: error.message,
         });
       } else {
-        // 已经开始流式输出，发送SSE错误
+        // Streaming has already started, so send an SSE error event
         res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
         res.end();
       }
@@ -1085,7 +1085,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
    *               success: false
    *               error: "Failed to delete session"
    */
-  // DELETE /api/sessions/:id - 删除会话
+  // DELETE /api/sessions/:id - Delete a session
   router.delete('/:id', async (req, res) => {
     try {
       const result = await sessionManager.deleteSession(req.params.id);
@@ -1102,7 +1102,7 @@ function createSessionRoutes(sessionManager, messageStore = null, streamManager 
     }
   });
 
-  // PATCH /api/sessions/:id/status - 更新会话状态
+  // PATCH /api/sessions/:id/status - Update session status
   router.patch('/:id/status', async (req, res) => {
     const { status } = req.body;
 

@@ -2,7 +2,7 @@ const axios = require('axios');
 const getLogger = require('../utils/logger');
 
 /**
- * Webhook 通知器
+ * Webhook notifier.
  */
 class WebhookNotifier {
   constructor(config) {
@@ -15,7 +15,7 @@ class WebhookNotifier {
   }
 
   /**
-   * 更新配置（热重载）
+   * Update configuration during hot reload.
    */
   updateConfig(newConfig) {
     const oldEnabled = this.enabled;
@@ -27,11 +27,11 @@ class WebhookNotifier {
     this.timeout = newConfig.webhook?.timeout || 5000;
     this.maxRetries = newConfig.webhook?.retries || 3;
 
-    // 记录配置变化
+    // Record configuration changes.
     if (oldEnabled !== this.enabled || oldUrl !== this.defaultUrl) {
-      this.logger.info('Webhook 配置已更新', {
+      this.logger.info('Webhook configuration updated', {
         enabled: this.enabled,
-        defaultUrl: this.defaultUrl ? '(已配置)' : '(未配置)',
+        defaultUrl: this.defaultUrl ? '(configured)' : '(not configured)',
         timeout: this.timeout,
         maxRetries: this.maxRetries,
       });
@@ -39,7 +39,7 @@ class WebhookNotifier {
   }
 
   /**
-   * 发送 webhook 通知
+   * Send a webhook notification.
    */
   async notify(event, data, options = {}) {
     if (!this.enabled) {
@@ -61,7 +61,7 @@ class WebhookNotifier {
 
     let lastError = null;
 
-    // 重试机制
+    // Retry logic.
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
         this.logger.info(`Sending webhook notification`, {
@@ -110,16 +110,16 @@ class WebhookNotifier {
           attempt,
         });
 
-        // 最后一次尝试失败，不再等待
+        // Do not wait after the final failed attempt.
         if (attempt < this.maxRetries) {
-          // 指数退避
+          // Exponential backoff.
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
     }
 
-    // 所有尝试都失败
+    // All attempts failed.
     this.logger.error(`Webhook notification failed after ${this.maxRetries} attempts`, {
       url,
       event,
@@ -135,7 +135,7 @@ class WebhookNotifier {
   }
 
   /**
-   * 任务完成通知
+   * Notify that a task has completed.
    */
   async notifyTaskCompleted(taskId, result) {
     return await this.notify('task.completed', {
@@ -146,7 +146,7 @@ class WebhookNotifier {
   }
 
   /**
-   * 任务失败通知
+   * Notify that a task has failed.
    */
   async notifyTaskFailed(taskId, error) {
     return await this.notify('task.failed', {
@@ -157,7 +157,7 @@ class WebhookNotifier {
   }
 
   /**
-   * 任务取消通知
+   * Notify that a task was cancelled.
    */
   async notifyTaskCancelled(taskId) {
     return await this.notify('task.cancelled', {
@@ -167,7 +167,7 @@ class WebhookNotifier {
   }
 
   /**
-   * 任务开始处理通知
+   * Notify that task processing has started.
    */
   async notifyTaskStarted(taskId, taskData = {}) {
     return await this.notify('task.started', {
@@ -182,7 +182,7 @@ class WebhookNotifier {
   }
 
   /**
-   * 会话创建通知
+   * Notify that a session was created.
    */
   async notifySessionCreated(sessionId, sessionData) {
     return await this.notify('session.created', {
@@ -192,7 +192,7 @@ class WebhookNotifier {
   }
 
   /**
-   * 会话删除通知
+   * Notify that a session was deleted.
    */
   async notifySessionDeleted(sessionId) {
     return await this.notify('session.deleted', {
@@ -201,7 +201,7 @@ class WebhookNotifier {
   }
 
   /**
-   * 自定义通知
+   * Send a custom notification.
    */
   async sendCustomNotification(event, data, url) {
     return await this.notify(event, data, { url });
