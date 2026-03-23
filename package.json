@@ -1,10 +1,10 @@
 {
-  "name": "nexus-bridge",
+  "name": "nexus-bridge-proxy",
   "version": "1.1.7",
   "description": "Nexus Bridge is an HTTP API wrapper for Claude CLI with sessions, async tasks, streaming, load balancing, and a TUI management tool",
   "main": "server.js",
   "bin": {
-    "nexus-bridge": "./cli.js"
+    "nexus-bridge-proxy": "./cli.js"
   },
   "scripts": {
     "start": "node server.js",

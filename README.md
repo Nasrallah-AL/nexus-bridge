@@ -2,9 +2,9 @@
 
 > Enterprise-grade HTTP API wrapper for Claude CLI with complete features including session management, async tasks, statistics monitoring, and more
 
-[![npm version](https://img.shields.io/npm/v/nexus-bridge.svg)](https://www.npmjs.com/package/nexus-bridge)
-[![Node.js](https://img.shields.io/node/v/nexus-bridge.svg)](https://nodejs.org/)
-[![License](https://img.shields.io/npm/l/nexus-bridge.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/nexus-bridge-proxy.svg)](https://www.npmjs.com/package/nexus-bridge-proxy)
+[![Node.js](https://img.shields.io/node/v/nexus-bridge-proxy.svg)](https://nodejs.org/)
+[![License](https://img.shields.io/npm/l/nexus-bridge-proxy.svg)](LICENSE)
 
 [**Simplified Chinese**](README_zh.md) | English
 
@@ -42,7 +42,7 @@ The fastest way to use Nexus Bridge - no installation required:
 
 ```bash
 # Run directly with npx
-npx nexus-bridge
+npx nexus-bridge-proxy
 ```
 
 This will launch the TUI management tool where you can:
@@ -55,25 +55,25 @@ This will launch the TUI management tool where you can:
 
 ```bash
 # Install globally
-npm install -g nexus-bridge
+npm install -g nexus-bridge-proxy
 
 # Then run anywhere to launch the TUI
-nexus-bridge
+nexus-bridge-proxy
 
 # Direct commands
-nexus-bridge start      # Start the server
-nexus-bridge stop       # Stop the server
-nexus-bridge status     # Check server status
+nexus-bridge-proxy start      # Start the server
+nexus-bridge-proxy stop       # Stop the server
+nexus-bridge-proxy status     # Check server status
 ```
 
 ### CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `npx nexus-bridge` | Launch TUI management tool (interactive) |
-| `npx nexus-bridge start` | Start the server |
-| `npx nexus-bridge stop` | Stop the server |
-| `npx nexus-bridge status` | Check server status |
+| `npx nexus-bridge-proxy` | Launch TUI management tool (interactive) |
+| `npx nexus-bridge-proxy start` | Start the server |
+| `npx nexus-bridge-proxy stop` | Stop the server |
+| `npx nexus-bridge-proxy status` | Check server status |
 
 ## 🛠️ Running the Project
 
